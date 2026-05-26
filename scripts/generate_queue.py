@@ -173,16 +173,11 @@ def main():
                 summary += f"  [{msg['level']}] {msg['nickname']}: {msg['content'][:30]}...\n"
         
         summary += f"\n完整列表已保存到服务器: {filepath}"
-        summary += "\n💡 如需发送，回复「发送群发」或「修改第X条」"
+        summary += "\n💡 打开 Hermes 对话输入「处理群发队列」进行修改和发送"
         
         print(summary)
-        
-        # 尝试推送到企微
-        try:
-            from app.services.wecom import send_text_to_employee
-            asyncio.run(send_text_to_employee("TangZengRong", summary))
-        except Exception as e:
-            print(f"  推送失败 (可忽略): {e}")
+        print("=" * 60)
+        print("✅ 已完成。请查看上方摘要，然后在对话中告诉我怎么处理。")
         
     finally:
         db.close()
