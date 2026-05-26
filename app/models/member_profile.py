@@ -65,5 +65,9 @@ class MemberProfile(Base):
     current_situation = Column(Text, default="")
     expectation = Column(Text, default="")
 
+    # S/A/B/C 分层评分
+    level = Column(String(2), default="", comment="运营层级 S/A/B/C")
+    level_score = Column(Integer, nullable=True, comment="层级评分(0-100)")
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

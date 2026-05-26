@@ -834,6 +834,37 @@ def _save_member_profile(db: Session, data: RegisterFormData, link: Registration
         tags_applied=json.dumps(result.get("tags", []), ensure_ascii=False),
         source=data.source or "",
     )
+    # 自动评分
+    try:
+        from app.services.member_scorer import score_member
+        profile = {
+            "income": data.income or "",
+            "city": data.city or "",
+            "role_self": data.role_self or "",
+            "ideal_role": data.ideal_role or "",
+            "birth_info": data.birth_info or "",
+            "nickname": data.nickname or "",
+            "height": str(height_val or ""),
+            "weight": str(weight_val or ""),
+            "body_type": data.body_type or "",
+            "job": data.job or "",
+            "education": data.education or "",
+            "hobbies": "",
+            "current_situation": "",
+            "expectation": data.ideal_desc or data.dealbreaker or "",
+            "ideal_desc": data.ideal_desc or "",
+            "dealbreaker": data.dealbreaker or "",
+            "marriage": data.marriage or "",
+            "photos": photo_path or "",
+            "lifestyle_status": lifestyle,
+            "long_distance": data.long_distance or "",
+        }
+        level, score, _ = score_member(profile)
+        p.level = level
+        p.level_score = score
+    except Exception:
+        pass
+    
     db.add(p)
     db.commit()
     db.refresh(p)

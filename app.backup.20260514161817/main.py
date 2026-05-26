@@ -1,0 +1,71 @@
+"""
+屿风活动报名小程序 - FastAPI 入口
+"""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
+
+from app.core.config import settings
+from app.core.database import engine, Base, SessionLocal
+from app.routers import auth, events, registration, admin_auth, admin_dashboard, admin_users, admin_business, admin_ui_config, admin_permission_distribution, public_ui_config, love, wx_kf, wecom_oauth
+from app.routers.admin_auth import ensure_default_admin
+from app.routers.admin_permission_distribution import ensure_default_role_permissions
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 静态资源
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
+
+# 注册路由
+app.include_router(auth.router)
+app.include_router(events.router)
+app.include_router(registration.router)
+app.include_router(admin_auth.router)
+app.include_router(admin_dashboard.router)
+app.include_router(admin_users.router)
+app.include_router(admin_business.router)
+app.include_router(admin_ui_config.router)
+app.include_router(admin_permission_distribution.router)
+app.include_router(admin_permission_distribution.user_router)
+app.include_router(public_ui_config.router)
+app.include_router(love.router)
+app.include_router(wx_kf.router)
+app.include_router(wecom_oauth.router)
+
+
+@app.on_event("startup")
+def startup():
+    """启动时自动创建数据库表"""
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        ensure_default_admin(db)
+        ensure_default_role_permissions(db)
+    finally:
+        db.close()
+
+
+@app.get("/")
+def root():
+    return {"app": settings.APP_NAME, "status": "running", "version": "1.0.0"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

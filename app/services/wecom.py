@@ -482,55 +482,34 @@ def _income_score(income: str) -> int:
 
 
 def evaluate_member_level(form_data: dict) -> str:
-    """运营层级 S/A/B/C：企微企业标签只用这个层级，其他画像进备注/description。"""
-    score = 0
-    score += _income_score(form_data.get("income") or "")
-
-    text_fields = [
-        form_data.get("lifestyle_status", ""),
-        form_data.get("hobbies", ""),
-        form_data.get("current_situation", ""),
-        form_data.get("expectation", ""),
-    ]
-    total_text_len = sum(len((t or "").strip()) for t in text_fields)
-    if total_text_len >= 180:
-        score += 30
-    elif total_text_len >= 100:
-        score += 22
-    elif total_text_len >= 50:
-        score += 12
-    elif total_text_len > 0:
-        score += 5
-
-    all_text = " ".join([str(form_data.get(k) or "") for k in ["expectation", "current_situation", "lifestyle_status", "hobbies"]])
-    if any(k in all_text for k in ["稳定", "长期", "认真", "真诚", "关系", "伴侣", "陪伴", "生活"]):
-        score += 20
-    elif (form_data.get("expectation") or "").strip():
-        score += 10
-
-    city = (form_data.get("city") or "").strip()
-    strong_cities = ["广州", "深圳", "上海", "北京", "杭州", "成都", "重庆", "武汉", "南京", "苏州", "佛山", "东莞"]
-    if any(c in city for c in strong_cities):
-        score += 10
-    elif city:
-        score += 5
-
-    basic_fields = ["nickname", "city", "age", "height", "weight", "role_self", "body_type", "job", "income"]
-    filled = sum(1 for f in basic_fields if str(form_data.get(f) or "").strip())
-    if filled >= 8:
-        score += 10
-    elif filled >= 5:
-        score += 6
-    elif filled >= 3:
-        score += 3
-
-    if score >= 80:
-        return "S"
-    if score >= 60:
-        return "A"
-    if score >= 40:
-        return "B"
-    return "C"
+    """运营层级 S/A/B/C：5 维评分模型。"""
+    from app.services.member_scorer import score_member
+    # member_scorer 期望 profile 具有完整字段
+    # form_data 来自登记表，缺省字段补空字符串
+    profile = {
+        "income": form_data.get("income", ""),
+        "city": form_data.get("city", ""),
+        "role_self": form_data.get("role_self", ""),
+        "ideal_role": form_data.get("ideal_role", ""),
+        "birth_info": str(form_data.get("age", "") or ""),
+        "nickname": form_data.get("nickname", ""),
+        "height": form_data.get("height", ""),
+        "weight": form_data.get("weight", ""),
+        "body_type": form_data.get("body_type", ""),
+        "job": form_data.get("job", ""),
+        "education": form_data.get("education", ""),
+        "hobbies": form_data.get("hobbies", ""),
+        "current_situation": form_data.get("current_situation", ""),
+        "expectation": form_data.get("expectation", ""),
+        "ideal_desc": form_data.get("ideal_desc", form_data.get("expectation", "")),
+        "dealbreaker": form_data.get("dealbreaker", ""),
+        "marriage": form_data.get("marriage", ""),
+        "photos": form_data.get("photos", ""),
+        "lifestyle_status": form_data.get("lifestyle_status", ""),
+        "long_distance": form_data.get("long_distance", ""),
+    }
+    level, _, _ = score_member(profile)
+    return level
 
 
 def suggest_tags_from_form(form_data: dict) -> list[str]:

@@ -346,7 +346,11 @@ def _build_member_info_reply(entity) -> str:
     # 家乡（没有对应字段）
     hometown = ""
 
-    lines.append(f"昵称：{nickname}")
+    # 层级
+    level = _get_val(entity, "level")
+    level_str = f" [{level}级]" if level in ("S", "A", "B", "C") else ""
+    
+    lines.append(f"昵称：{nickname}{level_str}")
     lines.append(f"属性：{role_self}")
     lines.append(f"年龄：{age}")
     lines.append(f"家乡：{hometown}")
