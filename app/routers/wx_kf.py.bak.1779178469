@@ -1,0 +1,275 @@
+"""微信客服 / 企业微信回调 — 集成专属填表链接生成
+
+员工在自建应用中说「给清风徐来发链接」或「给XXX发填表链接」
+→ 自动生成专属链接 → 回复给员工
+"""
+import base64
+import hashlib
+import re
+import struct
+import time
+import xml.etree.ElementTree as ET
+from urllib.parse import unquote
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.registration_link import RegistrationLink
+from app.services.wecom_deep_reply import generate_and_send_deep_reply
+
+router = APIRouter(prefix="/api/wecom", tags=["企微自建应用回调"])
+
+
+class WecomCallbackError(RuntimeError):
+    pass
+
+
+# ─── 加解密工具 ───────────────────────────────────────────────
+
+
+def _get_token_and_aes_key() -> tuple[str, str]:
+    token = getattr(settings, "WECOM_TOKEN", "") or getattr(settings, "WX_KF_TOKEN", "")
+    aes_key = getattr(settings, "WECOM_ENCODING_AES_KEY", "") or getattr(settings, "WX_KF_ENCODING_AES_KEY", "")
+    if not token or not aes_key:
+        raise WecomCallbackError("missing WECOM_TOKEN or WECOM_ENCODING_AES_KEY")
+    if len(aes_key) != 43:
+        raise WecomCallbackError("WECOM_ENCODING_AES_KEY must be 43 chars")
+    return token, aes_key
+
+
+def _pkcs7_unpad(data: bytes) -> bytes:
+    if not data:
+        raise WecomCallbackError("empty plaintext")
+    pad_len = data[-1]
+    if pad_len < 1 or pad_len > 32:
+        raise WecomCallbackError("invalid pkcs7 padding")
+    if data[-pad_len:] != bytes([pad_len]) * pad_len:
+        raise WecomCallbackError("bad pkcs7 padding bytes")
+    return data[:-pad_len]
+
+
+def _pkcs7_pad(data: bytes, block_size: int = 32) -> bytes:
+    pad_len = block_size - (len(data) % block_size)
+    return data + bytes([pad_len]) * pad_len
+
+
+def _verify_signature(token: str, timestamp: str, nonce: str, encrypted: str, msg_signature: str) -> None:
+    parts = sorted([token, timestamp, nonce, encrypted])
+    digest = hashlib.sha1("".join(parts).encode("utf-8")).hexdigest()
+    if digest != msg_signature:
+        raise WecomCallbackError("invalid msg_signature")
+
+
+def _decrypt_message(encrypted: str, aes_key: str) -> str:
+    """解密企微回调消息体"""
+    key = base64.b64decode(aes_key + "=")
+    if len(key) != 32:
+        raise WecomCallbackError("decoded aes key must be 32 bytes")
+    iv = key[:16]
+    ciphertext = base64.b64decode(encrypted)
+    decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    plaintext = _pkcs7_unpad(plaintext)
+    if len(plaintext) < 20:
+        raise WecomCallbackError("plaintext too short")
+    msg_len = struct.unpack(">I", plaintext[16:20])[0]
+    msg_start = 20
+    msg_end = msg_start + msg_len
+    if msg_end > len(plaintext):
+        raise WecomCallbackError("invalid message length")
+    return plaintext[msg_start:msg_end].decode("utf-8")
+
+
+def _encrypt_message(plain_xml: str, aes_key: str, corpid: str) -> str:
+    """加密回复消息体"""
+    key = base64.b64decode(aes_key + "=")
+    if len(key) != 32:
+        raise WecomCallbackError("decoded aes key must be 32 bytes")
+    iv = key[:16]
+
+    raw = plain_xml.encode("utf-8")
+    msg_len = struct.pack(">I", len(raw))
+    rand_bytes = b"\x00" * 16  # 16 字节随机串（简化处理）
+    corpid_bytes = corpid.encode("utf-8")
+
+    to_encrypt = rand_bytes + msg_len + raw + corpid_bytes
+    padded = _pkcs7_pad(to_encrypt)
+
+    encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    return base64.b64encode(ciphertext).decode("utf-8")
+
+
+def _encrypt_reply(plain_xml: str, token: str, aes_key: str, corpid: str) -> str:
+    """将回复 XML 加密并组装签名，返回最终的响应体"""
+    encrypted = _encrypt_message(plain_xml, aes_key, corpid)
+    timestamp = str(int(time.time()))
+    nonce = str(int(time.time() * 1000) % 1000000)
+
+    parts = sorted([token, timestamp, nonce, encrypted])
+    signature = hashlib.sha1("".join(parts).encode("utf-8")).hexdigest()
+
+    return f"""<xml>
+<Encrypt><![CDATA[{encrypted}]]></Encrypt>
+<MsgSignature><![CDATA[{signature}]]></MsgSignature>
+<TimeStamp>{timestamp}</TimeStamp>
+<Nonce><![CDATA[{nonce}]]></Nonce>
+</xml>"""
+
+
+# ─── URL 验证（GET） ─────────────────────────────────────────
+
+
+def verify_url(msg_signature: str, timestamp: str, nonce: str, echostr: str) -> str:
+    token, aes_key = _get_token_and_aes_key()
+    encrypted = unquote(echostr)
+    _verify_signature(token, timestamp, nonce, encrypted, msg_signature)
+    return _decrypt_message(encrypted, aes_key)
+
+
+@router.get("/callback")
+def wecom_callback_verify(
+    msg_signature: str = Query(...),
+    timestamp: str = Query(...),
+    nonce: str = Query(...),
+    echostr: str = Query(...),
+):
+    """企业微信自建应用 URL 验证"""
+    try:
+        plain = verify_url(msg_signature, timestamp, nonce, echostr)
+    except WecomCallbackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(content=plain, media_type="text/plain; charset=utf-8")
+
+
+# ─── 消息处理（POST） ───────────────────────────────────────
+
+
+def _parse_message_xml(xml_text: str) -> dict:
+    """解析企微回调的 XML 消息"""
+    root = ET.fromstring(xml_text)
+    result = {}
+    for child in root:
+        result[child.tag] = child.text or ""
+    return result
+
+
+def _extract_customer_name(text: str) -> str | None:
+    """从「给清风徐来发链接」中提取客户名"""
+    # 匹配：给XXX发链接 / 给XXX发个链接 / 给XXX发填表链接
+    m = re.search(r"给(.+?)发(?:个|个的|)?(?:填表)?链接", text)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+def _build_text_reply_xml(from_user: str, to_user: str, content: str) -> str:
+    """构造文本回复的 XML"""
+    create_time = int(time.time())
+    return f"""<xml>
+<ToUserName><![CDATA[{from_user}]]></ToUserName>
+<FromUserName><![CDATA[{to_user}]]></FromUserName>
+<CreateTime>{create_time}</CreateTime>
+<MsgType><![CDATA[text]]></MsgType>
+<Content><![CDATA[{content}]]></Content>
+</xml>"""
+
+
+@router.post("/callback")
+async def wecom_callback_event(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """处理企微自建应用的消息回调
+
+    目前支持：
+    - 员工说「给清风徐来发填表链接」→ 自动生成链接并回复
+    """
+    body = await request.body()
+
+    # ---------- 解密消息 ----------
+    try:
+        token, aes_key = _get_token_and_aes_key()
+    except WecomCallbackError:
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    try:
+        raw_xml = body.decode("utf-8")
+        # 解析 <Encrypt> 标签
+        enc_match = re.search(r"<Encrypt><!\[CDATA\[(.*?)\]\]></Encrypt>", raw_xml, re.DOTALL)
+        if not enc_match:
+            return Response(content="success", media_type="text/plain; charset=utf-8")
+
+        encrypted = enc_match.group(1)
+
+        # 解析 msg_signature 等信息
+        sig_match = re.search(r"<MsgSignature><!\[CDATA\[(.*?)\]\]></MsgSignature>", raw_xml)
+        ts_match = re.search(r"<TimeStamp>(.*?)</TimeStamp>", raw_xml)
+        nonce_match = re.search(r"<Nonce><!\[CDATA\[(.*?)\]\]></Nonce>", raw_xml)
+
+        if sig_match and ts_match and nonce_match:
+            _verify_signature(token, ts_match.group(1), nonce_match.group(1), encrypted, sig_match.group(1))
+
+        decrypted = _decrypt_message(encrypted, aes_key)
+    except Exception:
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    # ---------- 解析消息 ----------
+    try:
+        msg = _parse_message_xml(decrypted)
+    except Exception:
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    msg_type = msg.get("MsgType", "")
+    content = msg.get("Content", "").strip()
+    from_user = msg.get("FromUserName", "")
+    to_user = msg.get("ToUserName", "")  # 即自建应用的 AppID
+
+    # ---------- 只处理文本消息 ----------
+    if msg_type != "text" or not content:
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    # ---------- 检测「给XXX发链接」指令 ----------
+    # 所有文本消息都追加一个后台深度回复任务：回调内先快速响应，深度草稿稍后主动推给员工。
+    if from_user and content:
+        background_tasks.add_task(generate_and_send_deep_reply, from_user, content)
+
+    customer_name = _extract_customer_name(content)
+    if customer_name and from_user:
+        import uuid
+
+        token_str = uuid.uuid4().hex
+        link = RegistrationLink(
+            token=token_str,
+            employee_userid=from_user,
+            customer_name=customer_name,
+            status="pending",
+        )
+        db.add(link)
+        db.commit()
+
+        link_url = "https://yufeng.team/api/wecom/tag/register-form?" + "token=" + token_str
+
+        reply_text = (
+            f"✅ 已为「{customer_name}」生成专属登记链接：\n"
+            f"{link_url}\n\n"
+            f"把链接发给 {customer_name}，他填表后会自动打标签 📝\n\n"
+            f"我会继续异步生成一版更完整的客户回复草稿，稍后主动推给你。"
+        )
+    else:
+        reply_text = (
+            "收到，我先快速记录。\n"
+            "我会在后台结合会员档案和屿风话术生成一版更完整的回复草稿，稍后主动推给你。"
+        )
+
+    # ---------- 加密回复 ----------
+    try:
+        reply_xml = _build_text_reply_xml(from_user, to_user, reply_text)
+        encrypted_reply = _encrypt_reply(reply_xml, token, aes_key, settings.WECOM_CORP_ID)
+        return Response(content=encrypted_reply, media_type="application/xml; charset=utf-8")
+    except Exception:
+        return Response(content="success", media_type="text/plain; charset=utf-8")

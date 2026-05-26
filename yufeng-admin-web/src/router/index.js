@@ -1,0 +1,96 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import LoginView from '../views/LoginView.vue'
+import DashboardLayout from '../views/DashboardLayout.vue'
+import DashboardHome from '../views/DashboardHome.vue'
+import MiniappDashboard from '../views/MiniappDashboard.vue'
+import CertReviewView from '../views/CertReviewView.vue'
+import EventReviewView from '../views/EventReviewView.vue'
+import OrderListView from '../views/OrderListView.vue'
+import UserListView from '../views/UserListView.vue'
+import UiConfigView from '../views/UiConfigView.vue'
+import PermissionAdminView from '../views/PermissionAdminView.vue'
+import DistributorListView from '../views/DistributorListView.vue'
+import CommissionListView from '../views/CommissionListView.vue'
+import WithdrawalReviewView from '../views/WithdrawalReviewView.vue'
+import RegistrationManageView from '../views/RegistrationManageView.vue'
+
+import AdminManageView from '../views/AdminManageView.vue'
+import CMSCategoriesView from '../views/CMSCategoriesView.vue'
+import CMSBannersView from '../views/CMSBannersView.vue'
+import CMSWidgetsView from '../views/CMSWidgetsView.vue'
+import CMSAnnouncementsView from '../views/CMSAnnouncementsView.vue'
+import CourseManageView from '../views/CourseManageView.vue'
+import QuizManageView from '../views/QuizManageView.vue'
+import MatchRecordsView from '../views/MatchRecordsView.vue'
+import BoyfriendUsersView from '../views/BoyfriendUsersView.vue'
+import MemberTagView from '../views/MemberTagView.vue'
+import WecomBackfillView from '../views/WecomBackfillView.vue'
+import PartnerSystemView from '../views/PartnerSystemView.vue'
+import OpsConsoleView from '../views/OpsConsoleView.vue'
+import CooperationApplyView from '../views/CooperationApplyView.vue'
+
+const router = createRouter({
+  history: createWebHistory('/admin/'),
+  routes: [
+    { path: '/login', name: 'login', component: LoginView },
+    {
+      path: '/',
+      component: DashboardLayout,
+      redirect: '/dashboard',
+      children: [
+        { path: 'dashboard', name: 'dashboard', component: DashboardHome },
+        { path: 'miniapp-dashboard', name: 'miniapp-dashboard', component: MiniappDashboard },
+        { path: 'ui-config', name: 'ui-config', component: UiConfigView },
+        { path: 'certifications', name: 'certifications', component: CertReviewView },
+        { path: 'events', name: 'events', component: EventReviewView },
+        { path: 'orders', name: 'orders', component: OrderListView },
+        { path: 'users', name: 'users', component: UserListView },
+        { path: 'permissions', name: 'permissions', component: PermissionAdminView },
+        { path: 'distributors', name: 'distributors', component: DistributorListView },
+        { path: 'partners', name: 'partners', component: PartnerSystemView },
+        { path: 'commissions', name: 'commissions', component: CommissionListView },
+        { path: 'withdrawals', name: 'withdrawals', component: WithdrawalReviewView },
+        { path: 'registrations', name: 'registrations', component: RegistrationManageView },
+        { path: 'admins', name: 'admins', component: AdminManageView },
+        // 内容管理
+        { path: 'cms/categories', name: 'cms-categories', component: CMSCategoriesView },
+        { path: 'cms/banners', name: 'cms-banners', component: CMSBannersView },
+        { path: 'cms/widgets', name: 'cms-widgets', component: CMSWidgetsView },
+        { path: 'cms/announcements', name: 'cms-announcements', component: CMSAnnouncementsView },
+        // 课程 & 问卷
+        { path: 'courses', name: 'courses', component: CourseManageView },
+        { path: 'quizzes', name: 'quizzes', component: QuizManageView },
+        // 恋爱服务
+        { path: 'love/matches', name: 'love-matches', component: MatchRecordsView },
+        { path: 'love/boyfriend', name: 'love-boyfriend', component: BoyfriendUsersView },
+        // 会员标签 / 企微
+        { path: 'member-tags', name: 'member-tags', component: MemberTagView },
+        { path: 'wecom-backfill', name: 'wecom-backfill', component: WecomBackfillView },
+        { path: 'ops/console', name: 'ops-console', component: OpsConsoleView },
+        { path: 'cooperation', name: 'cooperation', component: CooperationApplyView },
+      ],
+      meta: { requiresAuth: true },
+    },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (to.meta.requiresAuth && !auth.isLoggedIn) {
+    return '/login'
+  }
+  if (to.path !== '/login' && auth.isLoggedIn && !auth.user) {
+    try {
+      await auth.fetchMe()
+    } catch {
+      auth.logout()
+      return '/login'
+    }
+  }
+  if (to.path === '/login' && auth.isLoggedIn) {
+    return '/dashboard'
+  }
+})
+
+export default router

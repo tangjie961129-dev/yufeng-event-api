@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>屿风 · 渠道合作</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:#1a1a2e;color:#e8e8e8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#16213e;border-radius:16px;padding:32px;max-width:420px;width:100%;border:1px solid #233554}
+h1{font-size:22px;color:#e94560;margin-bottom:8px;text-align:center}
+.sub{font-size:13px;color:#8892b0;margin-bottom:24px;text-align:center}
+.form-group{margin-bottom:16px}
+label{display:block;font-size:13px;color:#a8b2d1;margin-bottom:6px}
+input{width:100%;padding:12px;background:#0d1b2a;color:#e8e8e8;border:1px solid #233554;border-radius:8px;font-size:15px;outline:none}
+input:focus{border-color:#e94560}
+.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;cursor:pointer;font-weight:600}
+.btn-primary{background:#e94560;color:white}
+.btn-primary:hover{opacity:.9}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.link{color:#4fc3f7;cursor:pointer;text-decoration:underline;font-size:13px}
+.center{text-align:center;margin-top:16px}
+.hidden{display:none}
+.pid-box{background:#0d1b2a;border-radius:8px;padding:16px;text-align:center;margin:16px 0;border:1px dashed #e94560}
+.pid-box .num{font-size:28px;color:#e94560;font-weight:700;letter-spacing:2px}
+.pid-box .hint{font-size:12px;color:#8892b0;margin-top:6px}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:10px;font-size:14px;z-index:999;transition:opacity .3s;max-width:90%}
+.toast.ok{background:#1b4332;color:#64ffda}
+.toast.err{background:#3d0c11;color:#ff6b6b}
+.toast.show{opacity:1}
+.toast{opacity:0}
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+
+<div id="page-register" class="card">
+<h1>🤝 成为屿风渠道主</h1>
+<p class="sub">手机号注册，审核通过后即可推广赚钱</p>
+<form onsubmit="event.preventDefault();doRegister()">
+<div class="form-group"><label>怎么称呼你</label><input id="regName" type="text" placeholder="你的名字或昵称" required/></div>
+<div class="form-group"><label>手机号 <span style="color:#e94560;font-size:12px">（登录账号）</span></label><input id="regPhone" type="tel" placeholder="用于登录和联系" required/></div>
+<div class="form-group"><label>设置密码</label><input id="regPassword" type="password" placeholder="至少4位" required/></div>
+<div class="form-group"><label>确认密码</label><input id="regPassword2" type="password" placeholder="再次输入密码" required/></div>
+<button id="regBtn" class="btn btn-primary" type="submit">立即申请</button>
+</form>
+<div class="center"><span class="link" onclick="showLogin()">已有账号？点此登录</span></div>
+</div>
+
+<div id="page-success" class="card hidden">
+<h1>🎉 申请已提交</h1>
+<p class="sub">管理员审核通过后即可登录推广</p>
+<div class="pid-box"><div style="font-size:13px;color:#8892b0;margin-bottom:4px">你的渠道ID</div><div class="num" id="pidDisplay">----</div><div class="hint">请截图保存，审核通过后凭手机号+密码登录</div></div>
+<div class="center"><span class="link" onclick="showLogin()">去登录</span></div>
+</div>
+
+<div id="page-login" class="card hidden">
+<h1>🔐 渠道主登录</h1>
+<p class="sub">用注册的手机号和密码登录</p>
+<form onsubmit="event.preventDefault();doLogin()">
+<div class="form-group"><label>手机号</label><input id="loginPhone" type="tel" placeholder="注册时填的手机号" required/></div>
+<div class="form-group"><label>密码</label><input id="loginPwd" type="password" placeholder="注册时设置的密码" required/></div>
+<button class="btn btn-primary" type="submit">登录</button>
+</form>
+<div class="center"><span class="link" onclick="showRegister()">没有账号？点此注册</span></div>
+</div>
+
+<script>
+var API='/partner';
+function toast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast '+(t||'ok')+' show';setTimeout(function(){e.className='toast';},3000);}
+function showPage(i){['page-register','page-success','page-login'].forEach(function(p){document.getElementById(p).classList.toggle('hidden',p!==i);});}
+function showLogin(){showPage('page-login');}
+function showRegister(){showPage('page-register');}
+
+async function doRegister(){
+var n=document.getElementById('regName').value.trim(),ph=document.getElementById('regPhone').value.trim(),p=document.getElementById('regPassword').value.trim(),p2=document.getElementById('regPassword2').value.trim();
+if(!n){toast('请输入称呼','err');return;}
+if(!ph||ph.length<5){toast('请输入正确的手机号','err');return;}
+if(p.length<4){toast('密码至少4位','err');return;}
+if(p!==p2){toast('两次密码不一致','err');return;}
+var btn=document.getElementById('regBtn');btn.disabled=true;btn.textContent='提交中...';
+try{var params=new URLSearchParams();params.append('name',n);params.append('phone',ph);params.append('password',p);params.append('source','wechat');
+var r=await fetch(API+'/register?'+params.toString());var d=await r.json();
+if(d.success){document.getElementById('pidDisplay').textContent=d.partner_id;showPage('page-success');toast('注册成功，请等待审核');}else{toast(d.detail||'注册失败','err');}
+}catch(e){toast('网络错误: '+e.message,'err');}
+btn.disabled=false;btn.textContent='立即申请';
+}
+
+async function doLogin(){
+var ph=document.getElementById('loginPhone').value.trim(),p=document.getElementById('loginPwd').value.trim();
+if(!ph||!p){toast('请填写手机号和密码','err');return;}
+try{var r=await fetch(API+'/login?phone='+encodeURIComponent(ph)+'&password='+encodeURIComponent(p));
+if(!r.ok){var d=await r.json();toast(d.detail||'手机号或密码错误','err');return;}
+var d=await r.json();
+if(d.status==='pending'){toast('账号正在审核中','err');return;}
+if(d.status==='rejected'){toast('申请未通过','err');return;}
+localStorage.setItem('partner_id',d.partner_id);localStorage.setItem('partner_pwd',p);localStorage.setItem('partner_phone',ph);
+window.location.href=API+'/dashboard';
+}catch(e){toast('网络错误: '+e.message,'err');}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>屿风 · 渠道管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:#1a1a2e;color:#e8e8e8;min-height:100vh;padding:16px}
+.container{max-width:960px;margin:0 auto}
+.card{background:#16213e;border-radius:16px;padding:24px;margin-bottom:16px;border:1px solid #233554}
+h1{font-size:20px;color:#e94560;margin-bottom:16px}
+.stat-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.stat-item{flex:1;min-width:100px;text-align:center;background:rgba(255,255,255,0.03);border-radius:12px;padding:16px}
+.stat-num{font-size:24px;font-weight:700}
+.s-accent{color:#e94560}.s-blue{color:#4fc3f7}.s-green{color:#64ffda}.s-orange{color:#ffa726}.s-purple{color:#ce93d8}
+.stat-label{font-size:11px;color:#8892b0;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:#8892b0;padding:8px;border-bottom:1px solid #233554;font-weight:500}
+td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,0.05)}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:8px;background:#0f3460;color:#8892b0}
+.tag.active{background:#1b4332;color:#64ffda}
+.tag.done{background:#1b4332;color:#64ffda}
+.tag.pending{background:#3d2e0c;color:#ffd700}
+.tab-bar{display:flex;background:#0d1b2a;border-radius:10px;overflow:hidden;margin-bottom:16px}
+.tab{flex:1;text-align:center;padding:10px;font-size:13px;cursor:pointer;color:#8892b0}
+.tab.active{background:#e94560;color:white}
+.hidden{display:none}
+.btn-sm{padding:6px 14px;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-right:4px}
+.btn-deal{background:#1b4332;color:#64ffda}
+.btn-approve{background:#1b4332;color:#64ffda}
+.btn-reject{background:#3d0c11;color:#ff6b6b}
+.input-row{display:flex;gap:8px;flex-wrap:wrap}
+.input-row input{flex:1;min-width:100px;padding:10px;background:#0d1b2a;color:#e8e8e8;border:1px solid #233554;border-radius:8px;font-size:14px}
+.input-row input.small{flex:0 0 80px}
+#loginBox{max-width:400px;margin:80px auto;text-align:center}
+#loginBox input{width:100%;padding:12px;background:#0d1b2a;color:#e8e8e8;border:1px solid #233554;border-radius:8px;font-size:16px;text-align:center;margin:16px 0}
+#loginBox button{width:100%;padding:12px;border:none;background:#e94560;color:white;border-radius:8px;font-size:16px;cursor:pointer}
+#loginBox p{color:#8892b0;font-size:13px;margin-bottom:20px}
+</style>
+</head>
+<body>
+<div class="container" id="app"></div>
+
+<script>
+var API = "/partner/admin";
+var password = localStorage.getItem("pa_pwd") || "";
+
+function esc(s) {
+  var d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+function num(v) {
+  return Number(v || 0).toFixed(2);
+}
+
+function showLogin() {
+  document.getElementById("app").innerHTML =
+    '<div id="loginBox" class="card">' +
+    "<h1>🔐 渠道管理</h1>" +
+    "<p>屿风渠道主分销后台</p>" +
+    '<input type="password" id="pwdInput" placeholder="管理密码" />' +
+    '<button onclick="doLogin()">登录</button></div>';
+  document.getElementById("pwdInput").focus();
+  document.getElementById("pwdInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") doLogin();
+  });
+}
+
+function doLogin() {
+  var pwd = document.getElementById("pwdInput").value.trim();
+  if (!pwd) return;
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", API + "/login?password=" + encodeURIComponent(pwd), true);
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      password = pwd;
+      localStorage.setItem("pa_pwd", pwd);
+      loadDashboard();
+    } else {
+      alert("密码错误");
+    }
+  };
+  xhr.onerror = function() { alert("网络错误"); };
+  xhr.send();
+}
+
+function loadDashboard() {
+  document.getElementById("app").innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    "<h1>📊 渠道管理</h1>" +
+    '<button onclick="logout()" style="padding:6px 16px;border:none;border-radius:6px;background:#e94560;color:white;font-size:12px;cursor:pointer">退出</button></div>' +
+    '<div class="tab-bar">' +
+    '<div class="tab active" onclick="switchTab(\'partners\')">渠道主</div>' +
+    '<div class="tab" onclick="switchTab(\'pending\')">待审核</div>' +
+    '<div class="tab" onclick="switchTab(\'withdraws\')">提现</div>' +
+    '<div class="tab" onclick="switchTab(\'registers\')">成交录入</div></div>' +
+    '<div id="tab-partners"></div>' +
+    '<div id="tab-pending" class="hidden"></div>' +
+    '<div id="tab-withdraws" class="hidden"></div>' +
+    '<div id="tab-registers" class="hidden"></div>';
+  fetchPartners();
+  fetchWithdraws();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll(".tab").forEach(function(el) { el.classList.remove("active"); });
+  var tabs = document.querySelectorAll(".tab");
+  var map = { partners: 0, pending: 1, withdraws: 2, registers: 3 };
+  if (tabs[map[tab]]) tabs[map[tab]].classList.add("active");
+  var containers = ["partners", "pending", "withdraws", "registers"];
+  containers.forEach(function(t) {
+    var el = document.getElementById("tab-" + t);
+    if (el) el.classList.toggle("hidden", t !== tab);
+  });
+  if (tab === "registers") fetchRegisters();
+}
+
+function apiGet(path, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", API + path + "&password=" + encodeURIComponent(password), true);
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try { cb(JSON.parse(xhr.responseText)); } catch(e) { cb(null); }
+    } else {
+      if (xhr.status === 401 || xhr.status === 403) logout();
+      cb(null);
+    }
+  };
+  xhr.onerror = function() { cb(null); };
+  xhr.send();
+}
+
+function fetchPartners() {
+  apiGet("/partners?password=", function(data) {
+    if (!data) { document.getElementById("tab-partners").innerHTML = '<div class="card"><p>加载失败</p></div>'; return; }
+    var totals = data.total || {};
+    var partners = data.partners || [];
+    var rows = partners.map(function(p) {
+      return "<tr><td><strong>" + esc(p.name) + '</strong><br><span class="tag">' + p.partner_id + "</span></td>" +
+        "<td>" + p.total_registers + "</td><td>" + p.total_deals + "</td><td>" + num(p.deal_amount) + "</td>" +
+        "<td>" + num(p.total_commission) + "</td><td>" + num(p.withdrawable) + "</td>" +
+        '<td><span class="tag ' + p.status + '">' + p.status + "</span></td></tr>";
+    }).join("");
+    document.getElementById("tab-partners").innerHTML =
+      '<div class="card"><div class="stat-row">' +
+      '<div class="stat-item"><div class="stat-num s-accent">' + (totals.partners || 0) + '</div><div class="stat-label">渠道主</div></div>' +
+      '<div class="stat-item"><div class="stat-num s-blue">' + (totals.registers || 0) + '</div><div class="stat-label">总填表</div></div>' +
+      '<div class="stat-item"><div class="stat-num s-green">' + (totals.deals || 0) + '</div><div class="stat-label">加微</div></div>' +
+      '<div class="stat-item"><div class="stat-num s-orange">' + (totals.dealt_count || 0) + '</div><div class="stat-label">成交数</div></div>' +
+      '<div class="stat-item"><div class="stat-num s-purple">' + num(totals.deal_amount) + '</div><div class="stat-label">成交金额</div></div>' +
+      '<div class="stat-item"><div class="stat-num s-accent">' + num(totals.commission) + '</div><div class="stat-label">总佣金</div></div></div></div>' +
+      '<div class="card"><table><tr><th>渠道主</th><th>填表</th><th>加微</th><th>成交金额</th><th>佣金</th><th>余额</th><th>状态</th></tr>' +
+      (rows || '<tr><td colspan="7" style="text-align:center;color:#495670">暂无数据</td></tr>') + "</table></div>";
+    setTimeout(fetchPending, 50);
+  });
+}
+
+function fetchPending() {
+  apiGet("/partners?password=", function(data) {
+    if (!data) return;
+    var pending = (data.partners || []).filter(function(p) { return p.status === "pending" || p.status === "rejected"; });
+    var rows = pending.map(function(p) {
+      return "<tr><td><strong>" + esc(p.name) + '</strong><br><span class="tag">' + p.partner_id + "</span></td>" +
+        "<td>" + (p.phone || "-") + "</td><td>" + (p.wechat || "-") + "</td><td>" + p.created_at + "</td>" +
+        '<td><span class="tag ' + p.status + '">' + p.status + '</span></td><td>' +
+        (p.status === "pending"
+          ? '<button class="btn-sm btn-approve" onclick="approvePartner(\'' + p.partner_id + "','approve')\">通过</button>" +
+            '<button class="btn-sm btn-reject" onclick="approvePartner(\'' + p.partner_id + "','reject')\">拒绝</button>"
+          : "-") + "</td></tr>";
+    }).join("");
+    document.getElementById("tab-pending").innerHTML =
+      '<div class="card"><table><tr><th>姓名</th><th>手机</th><th>微信</th><th>申请时间</th><th>状态</th><th>操作</th></tr>' +
+      (rows || '<tr><td colspan="6" style="text-align:center;color:#495670">暂无待审核</td></tr>') + "</table></div>";
+  });
+}
+
+function approvePartner(pid, action) {
+  if (!confirm("确定" + (action === "approve" ? "通过" : "拒绝") + "这个渠道主吗？")) return;
+  apiGet("/approve_partner?partner_id=" + pid + "&action=" + action + "&password=", function() {
+    fetchPending();
+    fetchPartners();
+  });
+}
+
+function fetchWithdraws() {
+  apiGet("/withdraws?status=all&password=", function(data) {
+    if (!data) { document.getElementById("tab-withdraws").innerHTML = '<div class="card"><p>加载失败</p></div>'; return; }
+    var list = data.list || [];
+    var rows = list.map(function(w) {
+      return "<tr><td>" + esc(w.partner_name) + '<br><span class="tag">' + w.partner_id + "</span></td>" +
+        "<td>" + num(w.amount) + "</td><td>" + (w.method || "") + "</td>" +
+        '<td><span class="tag ' + w.status + '">' + w.status + '</span></td><td>' + w.created_at + "</td><td>" +
+        (w.status === "pending"
+          ? '<button class="btn-sm btn-approve" onclick="approveWd(' + w.id + ",'done')\">打款</button>" +
+            '<button class="btn-sm btn-reject" onclick="approveWd(' + w.id + ",'reject')\">拒绝</button>"
+          : "-") + "</td></tr>";
+    }).join("");
+    document.getElementById("tab-withdraws").innerHTML =
+      '<div class="card"><table><tr><th>渠道主</th><th>金额</th><th>方式</th><th>状态</th><th>申请时间</th><th>操作</th></tr>' +
+      (rows || '<tr><td colspan="6" style="text-align:center;color:#495670">暂无提现</td></tr>') + "</table></div>";
+  });
+}
+
+function approveWd(id, action) {
+  if (!confirm("确定" + (action === "done" ? "打款" : "拒绝") + "这笔提现吗？")) return;
+  apiGet("/approve_withdraw?withdraw_id=" + id + "&action=" + action + "&password=", function(data) {
+    if (data) { fetchWithdraws(); fetchPartners(); }
+    else alert("操作失败");
+  });
+}
+
+function fetchRegisters() {
+  document.getElementById("tab-registers").innerHTML =
+    '<div class="card"><h1>📝 记录成交</h1>' +
+    '<p style="color:#8892b0;font-size:13px;margin-bottom:12px">客户在企微转账后，在这里录入成交金额和分佣</p>' +
+    "<div class='input-row'>" +
+    '<input class="small" id="reg-id-input" type="number" placeholder="记录ID" />' +
+    '<input id="deal-amount-input" type="number" step="0.01" placeholder="成交金额(元)" />' +
+    '<input id="deal-fee-input" type="number" step="0.01" placeholder="分佣(元)" />' +
+    '<button class="btn-sm btn-deal" onclick="submitDeal()">记录成交</button></div></div>' +
+    '<div class="card"><h1>📊 渠道主成交概览</h1>';
+  fetchRegisterOverview();
+}
+
+function fetchRegisterOverview() {
+  apiGet("/partners?password=", function(data) {
+    if (!data) return;
+    var partners = data.partners || [];
+    var html = '<table><tr><th>渠道主</th><th>填表</th><th>加微</th><th>成交金额</th><th>佣金</th></tr>';
+    partners.forEach(function(p) {
+      html += "<tr><td><strong>" + esc(p.name) + '</strong><br><span class="tag">' + p.partner_id + "</span></td>" +
+        "<td>" + p.total_registers + "</td><td>" + p.total_deals + "</td><td>" + num(p.deal_amount) + "</td>" +
+        "<td>" + num(p.total_commission) + "</td></tr>";
+    });
+    html += "</table><p style='color:#495670;font-size:12px;margin-top:12px'>💡 记录ID可以在客户填表成功后的提示中找到，或让我帮你查</p>";
+    document.getElementById("tab-registers").innerHTML += html + "</div>";
+  });
+}
+
+function submitDeal() {
+  var rid = document.getElementById("reg-id-input").value.trim();
+  var amt = parseFloat(document.getElementById("deal-amount-input").value);
+  var fee = parseFloat(document.getElementById("deal-fee-input").value) || 0;
+  if (!rid || isNaN(amt) || amt <= 0) { alert("请填写记录ID和成交金额"); return; }
+  apiGet("/record_deal?register_id=" + rid + "&deal_amount=" + amt + "&deal_fee=" + fee + "&password=", function(d) {
+    if (d) {
+      alert("✅ 成交已记录！" + (d.customer || "") + " 成交¥" + d.deal_amount + " 分佣¥" + d.deal_fee);
+      document.getElementById("reg-id-input").value = "";
+      document.getElementById("deal-amount-input").value = "";
+      document.getElementById("deal-fee-input").value = "";
+      fetchPartners();
+      fetchRegisters();
+    } else {
+      alert("记录失败");
+    }
+  });
+}
+
+function logout() {
+  password = "";
+  localStorage.removeItem("pa_pwd");
+  showLogin();
+}
+
+// Start
+if (password) {
+  loadDashboard();
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>

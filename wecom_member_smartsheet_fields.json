@@ -1,0 +1,211 @@
+{
+  "docid": "dcsc4sa9_ONAeZMwfmVdZn5bsjiyhvAw1gFiemghsSEnCJ9rmZ3ckhu1qaWWFoRndeHUCxawh2IHJiWR6bhzSZAw",
+  "sheet_id": "q979lj",
+  "fields": [
+    {
+      "field_id": "f04Gwj",
+      "field_title": "文本",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "ftQMc5",
+      "field_title": "单选",
+      "field_type": "FIELD_TYPE_SINGLE_SELECT",
+      "property_single_select": {
+        "is_multiple": false,
+        "is_quick_add": true,
+        "options": []
+      }
+    },
+    {
+      "field_id": "ftk5Tx",
+      "field_title": "人员",
+      "field_type": "FIELD_TYPE_USER",
+      "property_user": {
+        "is_multiple": true,
+        "is_notified": true
+      }
+    },
+    {
+      "field_id": "ffFwIh",
+      "field_title": "数字",
+      "field_type": "FIELD_TYPE_NUMBER",
+      "property_number": {
+        "decimal_places": 1,
+        "use_separate": true
+      }
+    },
+    {
+      "field_id": "fn8TJd",
+      "field_title": "日期",
+      "field_type": "FIELD_TYPE_DATE_TIME",
+      "property_date_time": {
+        "format": "yyyy\"年\"m\"月\"d\"日\"",
+        "auto_fill": false
+      }
+    },
+    {
+      "field_id": "fNmtE4",
+      "field_title": "用户类型",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fR9TMu",
+      "field_title": "添加屿风助理状态",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fLyb5q",
+      "field_title": "最希望屿风平台出什么服务产品",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fpWNja",
+      "field_title": "是否接受异地",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fq4xoA",
+      "field_title": "最不能接受对方的缺点是",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "f4iOSZ",
+      "field_title": "用几个关键词来形容你未来的伴侣",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fkRLam",
+      "field_title": "用几个关键词来形容你自己",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fZT5oc",
+      "field_title": "你的交往经验如何",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fcrxzj",
+      "field_title": "目前对脱单的态度",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "f0Mc3z",
+      "field_title": "你希望对方是什么角色",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fgBG5Z",
+      "field_title": "你的性角色是",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "ff4NyZ",
+      "field_title": "你希望对方的体型是",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "f0ipIM",
+      "field_title": "你认为自己的体型是",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "ftRn4s",
+      "field_title": "你的体重",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fF2Khy",
+      "field_title": "你的身高",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fhXzIf",
+      "field_title": "你的最高学历是",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fkwavi",
+      "field_title": "你所在的行业",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "f1uEz2",
+      "field_title": "你的月收入",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fpen8c",
+      "field_title": "你的微信号",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fiyEH2",
+      "field_title": "你的手机号",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "f5xeIU",
+      "field_title": "你的生日",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fYcYmM",
+      "field_title": "你所在具体城市",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fmyWYH",
+      "field_title": "你的微信昵称",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fDu9uM",
+      "field_title": "填写时间",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "fUmIrN",
+      "field_title": "所在部门",
+      "field_type": "FIELD_TYPE_TEXT"
+    },
+    {
+      "field_id": "f1uD3T",
+      "field_title": "填写人",
+      "field_type": "FIELD_TYPE_TEXT"
+    }
+  ],
+  "field_map": {
+    "文本": "f04Gwj",
+    "单选": "ftQMc5",
+    "人员": "ftk5Tx",
+    "数字": "ffFwIh",
+    "日期": "fn8TJd",
+    "用户类型": "fNmtE4",
+    "添加屿风助理状态": "fR9TMu",
+    "最希望屿风平台出什么服务产品": "fLyb5q",
+    "是否接受异地": "fpWNja",
+    "最不能接受对方的缺点是": "fq4xoA",
+    "用几个关键词来形容你未来的伴侣": "f4iOSZ",
+    "用几个关键词来形容你自己": "fkRLam",
+    "你的交往经验如何": "fZT5oc",
+    "目前对脱单的态度": "fcrxzj",
+    "你希望对方是什么角色": "f0Mc3z",
+    "你的性角色是": "fgBG5Z",
+    "你希望对方的体型是": "ff4NyZ",
+    "你认为自己的体型是": "f0ipIM",
+    "你的体重": "ftRn4s",
+    "你的身高": "fF2Khy",
+    "你的最高学历是": "fhXzIf",
+    "你所在的行业": "fkwavi",
+    "你的月收入": "f1uEz2",
+    "你的微信号": "fpen8c",
+    "你的手机号": "fiyEH2",
+    "你的生日": "f5xeIU",
+    "你所在具体城市": "fYcYmM",
+    "你的微信昵称": "fmyWYH",
+    "填写时间": "fDu9uM",
+    "所在部门": "fUmIrN",
+    "填写人": "f1uD3T"
+  }
+}

@@ -1,0 +1,895 @@
+"""企业微信自建应用回调：专属填表链接 + 屿风智能客服回复助手
+
+能力：
+- 固定指令：给某客户生成专属登记链接
+- 智能回复：根据屿风话术库 + 会员档案 + 员工问题生成可直接发给客户的回复
+- 学习沉淀：支持“记住/以后/这条不错/不要这样说”等自然语言学习指令
+"""
+import asyncio
+import base64
+import json
+import hashlib
+import re
+import struct
+import time
+import uuid
+import os
+import xml.etree.ElementTree as ET
+from urllib.parse import unquote
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from sqlalchemy import or_, text as sql_text
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.database import SessionLocal, get_db
+from app.models.customer_assistant import CustomerAssistantLog, CustomerReplyPlaybook
+from app.models.member_profile import MemberProfile
+from app.models.registration_link import RegistrationLink
+from app.services.wecom import send_text_to_employee
+
+router = APIRouter(prefix="/api/wecom", tags=["企微自建应用回调"])
+
+
+class WecomCallbackError(RuntimeError):
+    pass
+
+
+DEFAULT_PLAYBOOKS = [
+    {
+        "scenario": "privacy_concern",
+        "trigger_keywords": "隐私,资料,信息,泄露,安全,不想填,为什么填资料",
+        "recommended_reply": "理解，你谨慎一点是对的。我们让大家先填资料，不是为了公开展示，而是为了更准确地判断双方是否合适，避免你浪费时间见明显不匹配的人。资料只用于内部匹配判断，不会随便外传。",
+        "avoid_words": "审核,保证脱单,命中注定,灵魂伴侣",
+        "style_notes": "先接住顾虑，再解释用途和边界，语气真诚克制。",
+    },
+    {
+        "scenario": "authenticity",
+        "trigger_keywords": "真实,靠谱吗,骗人,骗子,会员真假,照片真假",
+        "recommended_reply": "你有这个顾虑很正常。我们更看重真实资料和匹配质量，不会随便把不清楚情况的人硬推给你。前期会先通过资料和沟通做基础判断，合适再推进认识。",
+        "avoid_words": "百分百真实,绝对靠谱,包满意",
+        "style_notes": "不要过度承诺，强调筛选和风控。",
+    },
+    {
+        "scenario": "pricing",
+        "trigger_keywords": "收费,多少钱,价格,贵,费用,会员费",
+        "recommended_reply": "费用不是单纯买一个名单，而是包含资料整理、匹配筛选、沟通建议和后续跟进。我们会先看你的情况和期待，再判断适合哪种服务，不合适也不会硬推。",
+        "avoid_words": "便宜,马上成交,今天优惠",
+        "style_notes": "强调服务价值，不要销售感太重。",
+    },
+    {
+        "scenario": "no_match_yet",
+        "trigger_keywords": "没有合适,等多久,怎么还没有,没人,匹配不到",
+        "recommended_reply": "匹配这件事我们宁愿慢一点，也不想为了凑数随便推。你的条件和期待我们已经记录，后面有更贴近的人会优先帮你看。期间如果你的接受范围有变化，也可以随时告诉我。",
+        "avoid_words": "马上就有,肯定有,随便见见",
+        "style_notes": "降低焦虑，强调宁缺毋滥和持续跟进。",
+    },
+    {
+        "scenario": "long_distance",
+        "trigger_keywords": "异地,同城,距离,外地,短暂异地",
+        "recommended_reply": "同城当然更省心，但如果对方整体条件和相处节奏合适，短暂异地也可以先了解，不需要一开始就做很重的承诺。我们会优先看你能接受的范围。",
+        "avoid_words": "异地无所谓,必须接受",
+        "style_notes": "尊重边界，不强推。",
+    },
+    {
+        "scenario": "style_guide",
+        "trigger_keywords": "风格,语气,话术,回复,怎么说,怎么回",
+        "recommended_reply": "屿风回复风格：温暖、直接、专业、不油腻；多说具体事实，少说空泛鸡汤；不夸大承诺；不要用‘命中注定、灵魂伴侣、缘分安排’这类虚词。",
+        "avoid_words": "命中注定,灵魂伴侣,缘分注定,家人们,亲亲",
+        "style_notes": "偏成熟、稳、真诚，有边界感。",
+    },
+]
+
+NOT_NAME_SUB = ("这个", "那个", "可以", "什么", "看看", "是不是", "帮我", "麻烦", "客户", "链接", "填表", "登记")
+
+
+def _get_token_and_aes_key() -> tuple[str, str]:
+    token = getattr(settings, "WECOM_TOKEN", "") or getattr(settings, "WX_KF_TOKEN", "")
+    aes_key = getattr(settings, "WECOM_ENCODING_AES_KEY", "") or getattr(settings, "WX_KF_ENCODING_AES_KEY", "")
+    if not token or not aes_key:
+        raise WecomCallbackError("missing WECOM_TOKEN or WECOM_ENCODING_AES_KEY")
+    if len(aes_key) != 43:
+        raise WecomCallbackError("WECOM_ENCODING_AES_KEY must be 43 chars")
+    return token, aes_key
+
+
+def _pkcs7_unpad(data: bytes) -> bytes:
+    if not data:
+        raise WecomCallbackError("empty plaintext")
+    pad_len = data[-1]
+    if pad_len < 1 or pad_len > 32:
+        raise WecomCallbackError("invalid pkcs7 padding")
+    if data[-pad_len:] != bytes([pad_len]) * pad_len:
+        raise WecomCallbackError("bad pkcs7 padding bytes")
+    return data[:-pad_len]
+
+
+def _pkcs7_pad(data: bytes, block_size: int = 32) -> bytes:
+    pad_len = block_size - (len(data) % block_size)
+    return data + bytes([pad_len]) * pad_len
+
+
+def _verify_signature(token: str, timestamp: str, nonce: str, encrypted: str, msg_signature: str) -> None:
+    parts = sorted([token, timestamp, nonce, encrypted])
+    digest = hashlib.sha1("".join(parts).encode("utf-8")).hexdigest()
+    if digest != msg_signature:
+        raise WecomCallbackError("invalid msg_signature")
+
+
+def _decrypt_message(encrypted: str, aes_key: str) -> str:
+    key = base64.b64decode(aes_key + "=")
+    if len(key) != 32:
+        raise WecomCallbackError("decoded aes key must be 32 bytes")
+    iv = key[:16]
+    ciphertext = base64.b64decode(encrypted)
+    decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    plaintext = _pkcs7_unpad(plaintext)
+    if len(plaintext) < 20:
+        raise WecomCallbackError("plaintext too short")
+    msg_len = struct.unpack(">I", plaintext[16:20])[0]
+    msg_start = 20
+    msg_end = msg_start + msg_len
+    if msg_end > len(plaintext):
+        raise WecomCallbackError("invalid message length")
+    return plaintext[msg_start:msg_end].decode("utf-8")
+
+
+def _encrypt_message(plain_xml: str, aes_key: str, corpid: str) -> str:
+    key = base64.b64decode(aes_key + "=")
+    if len(key) != 32:
+        raise WecomCallbackError("decoded aes key must be 32 bytes")
+    iv = key[:16]
+    raw = plain_xml.encode("utf-8")
+    msg_len = struct.pack(">I", len(raw))
+    rand_bytes = b"\x00" * 16
+    corpid_bytes = corpid.encode("utf-8")
+    padded = _pkcs7_pad(rand_bytes + msg_len + raw + corpid_bytes)
+    encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    return base64.b64encode(ciphertext).decode("utf-8")
+
+
+def _encrypt_reply(plain_xml: str, token: str, aes_key: str, corpid: str) -> str:
+    encrypted = _encrypt_message(plain_xml, aes_key, corpid)
+    timestamp = str(int(time.time()))
+    nonce = str(int(time.time() * 1000) % 1000000)
+    signature = hashlib.sha1("".join(sorted([token, timestamp, nonce, encrypted])).encode("utf-8")).hexdigest()
+    return f"""<xml>
+<Encrypt><![CDATA[{encrypted}]]></Encrypt>
+<MsgSignature><![CDATA[{signature}]]></MsgSignature>
+<TimeStamp>{timestamp}</TimeStamp>
+<Nonce><![CDATA[{nonce}]]></Nonce>
+</xml>"""
+
+
+def verify_url(msg_signature: str, timestamp: str, nonce: str, echostr: str) -> str:
+    token, aes_key = _get_token_and_aes_key()
+    encrypted = unquote(echostr)
+    _verify_signature(token, timestamp, nonce, encrypted, msg_signature)
+    return _decrypt_message(encrypted, aes_key)
+
+
+@router.get("/callback")
+def wecom_callback_verify(
+    msg_signature: str = Query(...),
+    timestamp: str = Query(...),
+    nonce: str = Query(...),
+    echostr: str = Query(...),
+):
+    try:
+        plain = verify_url(msg_signature, timestamp, nonce, echostr)
+    except WecomCallbackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(content=plain, media_type="text/plain; charset=utf-8")
+
+
+def _parse_message_xml(xml_text: str) -> dict:
+    root = ET.fromstring(xml_text)
+    return {child.tag: (child.text or "") for child in root}
+
+
+def _is_possible_name(name: str) -> bool:
+    name = name.strip(" ，。:：\n\t")
+    if not (2 <= len(name) <= 12):
+        return False
+    if not re.search(r"[\u4e00-\u9fffA-Za-z]", name):
+        return False
+    return not any(bad in name for bad in NOT_NAME_SUB)
+
+
+def _extract_customer_name(text: str) -> str | None:
+    patterns = [
+        r"给\s*(.+?)\s*(?:发|生成|弄|来)?\s*(?:个|一个)?\s*(?:专属)?(?:登记|填表)?链接",
+        r"(.+?)\s*的?\s*(?:登记|填表)?链接",
+        r"(.+?)\s*(?:登记|填表)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text)
+        if m:
+            name = m.group(1).strip(" ，。:：\n\t")
+            if _is_possible_name(name):
+                return name
+    return None
+
+
+def _extract_named_customer_for_context(text: str) -> str | None:
+    m = re.search(r"(?:客户|会员|给|帮|查一下|查下)?\s*([\u4e00-\u9fffA-Za-z0-9_\-]{2,12})\s*(?:问|说|资料|档案|怎么|如何|想|要|填|有没有|的)", text)
+    if m and _is_possible_name(m.group(1)):
+        return m.group(1).strip()
+    return None
+
+
+def _detect_intent(text: str) -> str:
+    normalized = text.strip()
+    if _extract_customer_name(normalized):
+        return "generate_link"
+    if re.search(r"(记住|记录|以后|下次|这条不错|存为|保存话术|不要这样说|别这样说|太油|太虚|禁用)", normalized):
+        return "learn"
+    if re.search(r"(查一下|查下|资料|档案|填完|提交没|有没有.*会员|推荐.*候选|匹配)", normalized):
+        return "lookup_or_draft"
+    return "draft_reply"
+
+
+def _build_text_reply_xml(from_user: str, to_user: str, content: str) -> str:
+    create_time = int(time.time())
+    safe_content = (content or "").replace("]]>", "]]> ")[:1800]
+    return f"""<xml>
+<ToUserName><![CDATA[{from_user}]]></ToUserName>
+<FromUserName><![CDATA[{to_user}]]></FromUserName>
+<CreateTime>{create_time}</CreateTime>
+<MsgType><![CDATA[text]]></MsgType>
+<Content><![CDATA[{safe_content}]]></Content>
+</xml>"""
+
+
+def _ensure_default_playbooks(db: Session) -> None:
+    if db.query(CustomerReplyPlaybook).count() > 0:
+        return
+    for item in DEFAULT_PLAYBOOKS:
+        db.add(CustomerReplyPlaybook(source="default", **item))
+    db.commit()
+
+
+def _search_playbooks(db: Session, text: str, limit: int = 5) -> list[CustomerReplyPlaybook]:
+    _ensure_default_playbooks(db)
+    keywords = [w for w in re.split(r"[\s，。！？,.!?、:：；;]+", text) if len(w) >= 2]
+    candidates = db.query(CustomerReplyPlaybook).order_by(CustomerReplyPlaybook.success_count.desc(), CustomerReplyPlaybook.usage_count.desc()).limit(80).all()
+
+    def score(pb: CustomerReplyPlaybook) -> int:
+        hay = "\n".join([pb.scenario or "", pb.trigger_keywords or "", pb.recommended_reply or "", pb.style_notes or ""])
+        s = 0
+        for kw in keywords:
+            if kw in hay or kw in (pb.trigger_keywords or ""):
+                s += 3
+        for token in ["隐私", "真实", "收费", "异地", "资料", "链接", "匹配", "回复", "话术", "填表"]:
+            if token in text and token in hay:
+                s += 2
+        return s
+
+    ranked = sorted(candidates, key=score, reverse=True)
+    picked = [p for p in ranked if score(p) > 0][:limit]
+    return picked or ranked[: min(limit, len(ranked))]
+
+
+def _member_context(db: Session, text: str) -> tuple[str, str]:
+    name = _extract_named_customer_for_context(text) or ""
+    name = re.sub(r"^(会员|客户)", "", name).strip()
+    name = re.sub(r"(的|资料|档案)$", "", name).strip()
+    if not name:
+        return "", ""
+
+    # 1) 先查企微填表档案 member_profiles（少量但字段规整）
+    member = db.query(MemberProfile).filter(MemberProfile.nickname.ilike(f"%{name}%")).order_by(MemberProfile.updated_at.desc()).first()
+    if member:
+        parts = [
+            f"客户/会员：{member.nickname or name}",
+            f"城市：{member.city or '未知'}",
+            f"年龄：{member.age or '未知'}",
+            f"身高体重：{member.height or '未知'}cm / {member.weight or '未知'}kg",
+            f"属性：{member.role_self or '未知'}",
+            f"体型：{member.body_type or '未知'}",
+            f"职业/收入：{member.job or '未知'} / {member.income or '未知'}",
+            f"日常状态：{member.lifestyle_status or '无'}",
+            f"爱好习惯：{member.hobbies or '无'}",
+            f"目前状况：{member.current_situation or '无'}",
+            f"期待对象：{member.expectation or '无'}",
+            f"短暂异地：{member.long_distance or '未知'}",
+        ]
+        return name, "\n".join(parts)
+
+    # 2) 再查真实会员主库 users + 智能表格完整 raw_json + 联系方式
+    try:
+        rows = db.execute(
+            sql_text("""
+                SELECT
+                    u.id,
+                    u.nickname,
+                    u.city,
+                    u.age,
+                    u.education,
+                    u.income_range,
+                    u.bio,
+                    u.hobby_tags,
+                    u.personality_tags,
+                    u.match_preferences,
+                    u.created_at,
+                    mss.raw_json::text AS raw_json_text,
+                    mcm.wechat_id,
+                    mcm.phone
+                FROM users u
+                LEFT JOIN member_sync_sources mss ON mss.user_id = u.id
+                LEFT JOIN member_contact_methods mcm ON mcm.user_id = u.id
+                WHERE
+                    u.nickname ILIKE :kw
+                    OR u.city ILIKE :kw
+                    OR COALESCE(u.bio, '') ILIKE :kw
+                    OR COALESCE(u.match_preferences, '') ILIKE :kw
+                    OR COALESCE(u.hobby_tags, '') ILIKE :kw
+                    OR COALESCE(u.personality_tags, '') ILIKE :kw
+                    OR COALESCE(mss.raw_json::text, '') ILIKE :kw
+                    OR COALESCE(mcm.wechat_id, '') ILIKE :kw
+                    OR COALESCE(mcm.phone, '') ILIKE :kw
+                ORDER BY u.updated_at DESC NULLS LAST
+                LIMIT 5
+            """),
+            {"kw": f"%{name}%"},
+        ).mappings().all()
+    except Exception as exc:
+        print(f"[wx_kf] member main db search failed: {type(exc).__name__}: {exc!r}")
+        rows = []
+
+    if not rows:
+        return name, f"客户/会员名：{name}\n当前没有在 member_profiles、users、member_sync_sources 中命中会员档案。"
+
+    def mask_phone(v: str | None) -> str:
+        v = (v or "").strip()
+        return ("***" + v[-4:]) if len(v) >= 4 else "无"
+
+    def mask_wechat(v: str | None) -> str:
+        v = (v or "").strip()
+        return (v[:4] + "***") if len(v) > 4 else (v or "无")
+
+    def compact_raw(raw: str | None, max_len: int = 900) -> str:
+        raw = (raw or "").replace("\\n", " ").replace("\n", " ").strip()
+        raw = re.sub(r'"(phone|手机号|手机|电话|wechat|微信号|微信)"\s*:\s*"[^"]+"', r'"\1":"已隐藏"', raw, flags=re.I)
+        return raw[:max_len] + ("..." if len(raw) > max_len else "")
+
+    parts = [f"命中真实会员主库 {len(rows)} 条（users + member_sync_sources + member_contact_methods）："]
+    for i, r in enumerate(rows, 1):
+        parts.append(
+            f"\n{i}. 会员ID:{r.get('id')} / 昵称:{r.get('nickname') or '未知'} / 城市:{r.get('city') or '未知'} / 年龄:{r.get('age') or '未知'}\n"
+            f"   教育/收入:{r.get('education') or '未知'} / {r.get('income_range') or '未知'}\n"
+            f"   爱好标签:{r.get('hobby_tags') or '无'}\n"
+            f"   性格标签:{r.get('personality_tags') or '无'}\n"
+            f"   自我介绍:{r.get('bio') or '无'}\n"
+            f"   择偶偏好:{r.get('match_preferences') or '无'}\n"
+            f"   联系方式: 微信 {mask_wechat(r.get('wechat_id'))}, 手机 {mask_phone(r.get('phone'))}\n"
+            f"   智能表格原始资料摘要:{compact_raw(r.get('raw_json_text'))}"
+        )
+    return name, "\n".join(parts)
+
+def _save_log(db: Session, employee_userid: str, raw: str, intent: str, customer_name: str = "", reply: str = "", feedback: str = "") -> None:
+    try:
+        db.add(CustomerAssistantLog(employee_userid=employee_userid or "", raw_message=raw or "", detected_intent=intent or "", customer_name=customer_name or "", ai_reply=reply or "", feedback=feedback or ""))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _conversation_context(db: Session, employee_userid: str, limit: int = 8) -> str:
+    """按企微员工维度取最近对话，作为短期上下文。"""
+    if not employee_userid:
+        return ""
+    try:
+        logs = (
+            db.query(CustomerAssistantLog)
+            .filter(CustomerAssistantLog.employee_userid == employee_userid)
+            .order_by(CustomerAssistantLog.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    except Exception as exc:
+        print(f"[wx_kf] load conversation context failed: {type(exc).__name__}: {exc!r}")
+        return ""
+    if not logs:
+        return ""
+    lines = []
+    for item in reversed(logs):
+        raw = (item.raw_message or "").strip().replace("\n", " ")[:220]
+        reply = (item.ai_reply or "").strip().replace("\n", " ")[:260]
+        cname = (item.customer_name or "").strip()
+        intent = item.detected_intent or ""
+        if not raw:
+            continue
+        prefix = f"[{intent}]" if intent else ""
+        if cname:
+            prefix += f" 客户/会员:{cname}"
+        line = f"员工: {raw}"
+        if prefix:
+            line = prefix + "\n" + line
+        if reply:
+            line += f"\n助手: {reply}"
+        lines.append(line)
+    return "\n---\n".join(lines)
+
+
+def _resolve_contextual_reference(db: Session, employee_userid: str, current_text: str) -> str:
+    """当员工说“他/这个会员/刚才那个”时，从最近日志里补足会员名。"""
+    if not re.search(r"(他|这个会员|这个客户|刚才那个|上面那个|这位)", current_text or ""):
+        return ""
+    try:
+        last = (
+            db.query(CustomerAssistantLog)
+            .filter(CustomerAssistantLog.employee_userid == employee_userid, CustomerAssistantLog.customer_name != "")
+            .order_by(CustomerAssistantLog.created_at.desc())
+            .first()
+        )
+        return last.customer_name if last else ""
+    except Exception:
+        return ""
+
+
+def _clean_learning_text(text: str) -> str:
+    """把“记住/以后/这条不错”等学习指令清理成可复用话术。"""
+    cleaned = (text or "").strip()
+    cleaned = re.sub(r"^(记住|记录|保存|存为|这条不错|以后|下次)[：:，,\s]*", "", cleaned)
+    cleaned = re.sub(r"^(客户问[^，。:：]*[，。:：\s]*)", "", cleaned)
+    cleaned = cleaned.replace("不要这样说", "避免这样说")
+    return cleaned.strip() or text
+
+
+def _handle_learn(db: Session, text: str, employee_userid: str) -> str:
+    scenario = "manual_learning"
+    if "隐私" in text or "资料" in text:
+        scenario = "privacy_concern"
+    elif "收费" in text or "价格" in text:
+        scenario = "pricing"
+    elif "真实" in text or "骗人" in text or "靠谱" in text:
+        scenario = "authenticity"
+    elif "油" in text or "虚" in text or "不要" in text or "别" in text or "禁用" in text:
+        scenario = "style_guide"
+
+    avoid = ""
+    if re.search(r"(不要|别|禁用|太油|太虚)", text):
+        avoid = text
+
+    pb = CustomerReplyPlaybook(
+        scenario=scenario,
+        trigger_keywords=_clean_learning_text(text)[:300],
+        recommended_reply=_clean_learning_text(text)[:1500],
+        avoid_words=avoid[:500],
+        style_notes="来自员工在企微中直接教给助手的经验，后续生成回复时优先参考。",
+        source="feedback",
+        success_count=1,
+    )
+    db.add(pb)
+    db.commit()
+    _save_log(db, employee_userid, text, "learn", reply="已记录", feedback=text)
+    return f"✅ 已记录到屿风客服话术库：{scenario}\n沉淀内容：{_clean_learning_text(text)[:80]}\n以后遇到类似问题，我会优先参考这条经验。"
+
+
+def _format_playbook_context(playbooks: list[CustomerReplyPlaybook]) -> str:
+    lines = []
+    for i, pb in enumerate(playbooks, 1):
+        lines.append(
+            f"[{i}] 场景：{pb.scenario}\n关键词：{pb.trigger_keywords}\n推荐说法：{pb.recommended_reply}\n避坑：{pb.avoid_words}\n风格：{pb.style_notes}"
+        )
+    return "\n\n".join(lines)
+
+
+async def _query_customer_ai(user_message: str, playbook_context: str, member_context: str = "") -> str | None:
+    api_key = getattr(settings, "OPENAI_API_KEY", "") or getattr(settings, "DEEPSEEK_API_KEY", "")
+    if not api_key:
+        return None
+    base_url = (getattr(settings, "OPENAI_BASE_URL", "") or "https://99887123.xyz/v1").rstrip("/")
+    model = getattr(settings, "CUSTOMER_ASSISTANT_MODEL", "") or "gpt-5.5"
+    system_prompt = f"""你是“屿风小助理”，服务于屿风男同性恋交友平台的企微员工。
+你不是只能写客服话术，而是员工的通用 AI 工作助手。请先判断员工原话的真实意图，再选择回答方式。
+
+能力范围：
+1. 客服回复：员工问“怎么回客户/帮我写话术”时，给可直接复制给客户的成熟克制回复。
+2. 会员查询：员工问“查档案/查资料/有没有某会员/某城市会员”时，直接总结会员资料和可用线索，不要套客服话术格式。
+3. 运营建议：员工问匹配、标签、跟进策略、活动、产品、转化时，给分析和下一步建议。
+4. 日常问答：员工问平台流程、系统能力、如何操作时，直接回答。
+
+回答规则：
+- 只有明确要求“怎么回客户/写回复/话术”时，才输出“客户可见回复”。
+- 查询类问题直接列出结果、缺失信息和下一步，不要说“可以先这样回”。
+- 不要把所有问题都变成客服草稿。
+- 中文、自然、专业、直接；不承诺包成功；对外隐藏性角色，内部备注可以写；手机号只露尾号4位，微信号只露前4位。
+
+可参考的话术库：
+{playbook_context or '暂无'}
+
+相关会员/客户上下文：
+{member_context or '暂无'}
+"""
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "max_tokens": 420,
+                    "temperature": 0.55,
+                },
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+            print(f"[wx_kf] LLM API {resp.status_code}: {resp.text[:200]}")
+    except Exception as exc:
+        print(f"[wx_kf] LLM call failed: {type(exc).__name__}: {exc!r}")
+    return None
+
+
+def _is_customer_reply_request(text: str) -> bool:
+    return bool(re.search(r"(怎么回|如何回|回复客户|回客户|话术|帮我写|怎么说|可复制)", text or ""))
+
+
+def _fallback_draft(user_message: str, playbooks: list[CustomerReplyPlaybook]) -> str:
+    if not _is_customer_reply_request(user_message):
+        return "收到，我在后台继续处理这个问题；如果需要查会员，请尽量带上昵称、城市或微信线索。"
+    if playbooks:
+        p = playbooks[0]
+        return f"可以先这样回：\n\n{p.recommended_reply}"
+    return "可以先这样回：\n\n理解你的顾虑，我这边会先根据你的情况做基础判断，不会随便把不合适的人硬推给你。你可以先把核心信息发我，我帮你看更适合的方向。"
+
+async def _handle_generate_link(db: Session, content: str, from_user: str) -> tuple[str, str]:
+    customer_name = _extract_customer_name(content) or "客户"
+    token_str = uuid.uuid4().hex
+    link = RegistrationLink(token=token_str, employee_userid=from_user, customer_name=customer_name, status="pending")
+    db.add(link)
+    db.commit()
+    link_url = f"https://yufeng.team/api/wecom/tag/register-form?token={token_str}"
+    reply_text = (
+        f"✅ 已为「{customer_name}」生成专属登记链接：\n"
+        f"{link_url}\n\n"
+        f"把链接发给 {customer_name}，他填表后会自动打标签并沉淀会员档案。"
+    )
+    return customer_name, reply_text
+
+def _load_gbrain_token() -> str:
+    try:
+        import re as _re
+        with open("/home/ubuntu/.hermes/config.yaml", "r", encoding="utf-8") as f:
+            m = _re.search(r"Authorization:\s*Bearer\s+(\S+)", f.read())
+            return m.group(1).strip() if m else ""
+    except Exception:
+        return ""
+
+
+async def _query_gbrain_context(query_text: str) -> str:
+    """直接调用 GBrain MCP HTTP，给 Hermes 提供真实知识库结果。"""
+    token = _load_gbrain_token()
+    if not token or not query_text:
+        return ""
+
+    queries = [query_text[:200]]
+    if re.search(r"(匹配|推荐|候选|适合推给谁|match|红娘|配对)", query_text or "", re.I):
+        queries += ["屿风 匹配引擎", "屿风 会员匹配", "Yufeng matching engine"]
+    queries += ["屿风", "会员 数据库"]
+
+    async def call_one(q: str) -> str:
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "search", "arguments": {"query": q, "limit": 5}},
+        }
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                "http://127.0.0.1:8787/mcp",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
+                json=payload,
+            )
+            if resp.status_code != 200:
+                print(f"[wx_kf] GBrain MCP {resp.status_code}: {resp.text[:300]}")
+                return ""
+            data = resp.json()
+            content = data.get("result", {}).get("content", [])
+            texts = []
+            for item in content:
+                if item.get("type") == "text":
+                    txt = item.get("text", "")
+                    if txt and txt.strip() != "[]":
+                        texts.append(f"【GBrain search: {q}】\n" + txt[:2500])
+            return "\n".join(texts)
+
+    results = []
+    seen = set()
+    for q in queries:
+        if not q or q in seen:
+            continue
+        seen.add(q)
+        try:
+            out = await call_one(q)
+            if out:
+                results.append(out)
+                # 有结果就够，匹配类最多再补一条通用结果
+                if len(results) >= 2:
+                    break
+        except Exception as exc:
+            print(f"[wx_kf] GBrain MCP search failed: {type(exc).__name__}: {exc!r}")
+    return "\n\n".join(results)[:6000]
+
+def _matching_engine_static_context(raw_message: str) -> str:
+    if not re.search(r"(匹配|推荐|候选|适合推给谁|match|红娘|配对)", raw_message or "", re.I):
+        return ""
+    return """生产匹配能力入口（以当前生产 yufeng-event-api 为准，不要被 GBrain 旧路径误导）：
+- 项目路径：/home/ubuntu/yufeng-event-api
+- 服务：yufeng-event-api.service，端口 8000
+- 数据库：PostgreSQL yufeng
+- 真实会员主库：users（1161+）
+- 智能表格详细资料：member_sync_sources.raw_json（451+）
+- 联系方式：member_contact_methods（输出需脱敏）
+- 企微填表档案：member_profiles（少量新客表单档案）
+- 即时匹配服务：app/services/matching_service.py，目前主要基于 member_profiles 做角色/城市/年龄匹配
+- 小程序 AI 匹配接口：app/routers/love.py 的 /api/love/match，使用 users/member_profiles/Demo fallback 混合逻辑
+- 如果员工问“某会员适合推给谁”，应优先基于当前会员资料，从 users + member_sync_sources 中按城市、属性/角色、年龄、身高体型、学历收入、择偶偏好进行候选筛选，并说明命中依据。"""
+
+
+
+def _load_hermes_api_key() -> str:
+    for path in ("/home/ubuntu/.hermes/.env", "/root/.hermes/.env"):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("HERMES_API_KEY="):
+                        return line.split("=", 1)[1].strip().strip(chr(34)).strip(chr(39))
+        except Exception:
+            continue
+    return os.getenv("HERMES_API_KEY", "")
+
+
+async def _query_hermes_agent(raw_message: str, history_ctx: str, member_ctx: str, playbook_ctx: str, gbrain_ctx: str = "", matching_ctx: str = "") -> str | None:
+    api_key = _load_hermes_api_key()
+    if not api_key:
+        print("[wx_kf] Hermes API key missing")
+        return None
+    prompt = f"""你是屿风平台主理人的云端 Hermes Agent，通过企微自建应用为员工提供帮助。
+请直接回答员工问题。你可以使用已启用的工具，包括 GBrain/MCP、terminal、file、session_search 等。
+
+重要规则：
+- 如果问题涉及会员资料、匹配引擎、运营策略，优先使用可用工具/GBrain/数据库进行查询，不要只凭感觉回答。
+- 如果员工使用“他/这个会员/刚才那个”等指代，请结合最近对话上下文判断对象。
+- 客服回复类才输出可复制给客户的话术；查询/分析/系统问题直接给员工结论。
+- 中文、直接、可执行。敏感联系方式脱敏。
+- 输出必须使用下面固定分区，不要混排，不要加 Markdown 表格：
+【处理思路】
+给员工看的完整说明：包含判断依据、查到的信息、推荐动作、注意事项。不要输出冗长内心推理，但要让员工知道为什么这样处理。
+
+【客户回复】
+只有当员工是在问“怎么回复客户/帮我写话术/客户问xxx怎么回”时才填写。这里必须只放客户可见话术，不要解释，不要编号，方便员工整段复制。不是客服回复类就写：无
+
+最近对话上下文：
+{history_ctx or '暂无'}
+
+当前已由 API 查到的会员资料上下文：
+{member_ctx or '暂无'}
+
+GBrain 知识库搜索结果：
+{gbrain_ctx or '暂无'}
+
+匹配引擎/数据库入口说明：
+{matching_ctx or '暂无'}
+
+本地话术库参考：
+{playbook_ctx or '暂无'}
+
+员工当前问题：
+{raw_message}
+"""
+    payload = {"model": "hermes-agent", "messages": [{"role": "user", "content": prompt}], "stream": False}
+    try:
+        async with httpx.AsyncClient(timeout=150.0) as client:
+            resp = await client.post(
+                "http://127.0.0.1:8642/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+            print(f"[wx_kf] Hermes API {resp.status_code}: {resp.text[:500]}")
+    except Exception as exc:
+        print(f"[wx_kf] Hermes call failed: {type(exc).__name__}: {exc!r}")
+    return None
+
+
+def _extract_section(text: str, title: str) -> str:
+    if not text:
+        return ""
+    pattern = rf"【{re.escape(title)}】\s*(.*?)(?=\n?【[^】]+】|\Z)"
+    m = re.search(pattern, text, re.S)
+    return m.group(1).strip() if m else ""
+
+
+def _format_assistant_messages(raw_message: str, ai_reply: str, hermes: bool = True) -> tuple[str, str | None]:
+    """拆成：员工说明 + 纯客户回复。
+
+    第一条给员工看，可带标题和依据；第二条只放客户可见话术，不加任何标题/标签。
+    """
+    prefix = "Hermes屿风小助理" if hermes else "屿风小助理"
+    thought = _extract_section(ai_reply, "处理思路") or _extract_section(ai_reply, "判断依据")
+    employee_answer = _extract_section(ai_reply, "给员工的回答") or _extract_section(ai_reply, "下一步动作")
+    customer = (
+        _extract_section(ai_reply, "客户回复")
+        or _extract_section(ai_reply, "可直接复制给客户")
+        or _extract_section(ai_reply, "客户可见回复")
+    )
+
+    if customer.strip() in {"无", "无。", "暂无", "不适用", "无需"}:
+        customer = ""
+
+    if not thought and not employee_answer and not customer:
+        thought = ai_reply.strip()
+
+    employee_parts = [f"🧠 {prefix} · 处理思路", f"原问题：{raw_message[:300]}"]
+    if thought:
+        employee_parts.append(thought[:1200])
+    if employee_answer:
+        employee_parts.append(employee_answer[:1000])
+    employee_msg = "\n\n".join(part.strip() for part in employee_parts if part and part.strip()).strip()
+
+    # 第二条必须是纯客户回复：不能有标题、不能有标签、不能有“以下是”等额外字。
+    customer_msg = customer.strip()[:1200] if customer else None
+    return employee_msg, customer_msg
+
+
+async def _send_deep_reply_to_employee(employee_userid: str, raw_message: str, intent: str, first_reply: str = "") -> None:
+    """后台异步深度整理：不阻塞企微 5 秒回调，完成后主动推送给员工。"""
+    if not employee_userid or not raw_message:
+        return
+    db = SessionLocal()
+    try:
+        playbooks = _search_playbooks(db, raw_message, limit=5)
+        ref_name = _resolve_contextual_reference(db, employee_userid, raw_message)
+        lookup_text = (f"查一下会员{ref_name}的资料" if ref_name else raw_message)
+        customer_name, member_ctx = _member_context(db, lookup_text)
+        if not customer_name and ref_name:
+            customer_name = ref_name
+        history_ctx = _conversation_context(db, employee_userid, limit=8)
+        pb_ctx = _format_playbook_context(playbooks[:5])
+
+        # 先由回调层直接查询 GBrain MCP，避免 Hermes 侧 MCP HTTP transport 失效时拿不到知识库。
+        gbrain_ctx = await _query_gbrain_context(raw_message)
+        matching_ctx = _matching_engine_static_context(raw_message)
+
+        # 优先交给真正的 Hermes Agent（可调用 terminal/数据库/工具；同时喂入 GBrain 检索结果）。失败再回退到本地 LLM 机器人。
+        ai_reply = await _query_hermes_agent(raw_message, history_ctx, member_ctx, pb_ctx, gbrain_ctx, matching_ctx)
+        if ai_reply:
+            employee_msg, customer_msg = _format_assistant_messages(raw_message, ai_reply, hermes=True)
+            await send_text_to_employee(employee_userid, employee_msg)
+            if customer_msg:
+                await send_text_to_employee(employee_userid, customer_msg)
+            _save_log(db, employee_userid, raw_message, f"{intent}_hermes", customer_name, ai_reply)
+            return
+
+        if _is_customer_reply_request(raw_message):
+            deep_prompt = (
+                f"最近对话上下文：\n{history_ctx or '暂无'}\n\n员工原始问题：{raw_message}\n\n"
+                "这是客服回复类请求。请严格按下面格式输出：\n"
+                "【处理思路】给员工看的完整说明：判断依据 + 注意事项 + 下一步动作。\n"
+                "【客户回复】只放一段客户可见话术，不要解释，不要标题，不要编号。"
+            )
+        else:
+            deep_prompt = (
+                f"最近对话上下文：\n{history_ctx or '暂无'}\n\n员工原始问题：{raw_message}\n\n"
+                "这不是单纯客服话术请求。请严格按下面格式输出：\n"
+                "【处理思路】给员工看的完整说明：直接给员工结论、查询结果、匹配建议或下一步动作。\n"
+                "【客户回复】无"
+            )
+        ai_reply = await _query_customer_ai(deep_prompt, pb_ctx, member_ctx)
+        if not ai_reply:
+            ai_reply = _fallback_draft(raw_message, playbooks) + "\n\n【下一步动作】如果客户还没填资料，建议先发专属登记链接；如果已填资料，再结合档案继续判断。"
+        employee_msg, customer_msg = _format_assistant_messages(raw_message, ai_reply, hermes=False)
+        await send_text_to_employee(employee_userid, employee_msg)
+        if customer_msg:
+            await send_text_to_employee(employee_userid, customer_msg)
+        _save_log(db, employee_userid, raw_message, f"{intent}_deep", customer_name, ai_reply)
+    except Exception as exc:
+        print(f"[wx_kf] async deep reply failed: {type(exc).__name__}: {exc!r}")
+        try:
+            await send_text_to_employee(employee_userid, f"🧠 屿风客服助手·深度回复生成失败：{type(exc).__name__}。你可以稍后重试，或把问题说得更具体。")
+        except Exception as send_exc:
+            print(f"[wx_kf] async deep failure notice failed: {type(send_exc).__name__}: {send_exc!r}")
+    finally:
+        db.close()
+
+
+@router.post("/callback")
+async def wecom_callback_event(request: Request, db: Session = Depends(get_db)):
+    try:
+        return await asyncio.wait_for(_do_callback(request, db), timeout=4.5)
+    except asyncio.TimeoutError:
+        print("[callback] timeout, return success")
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+    except Exception as e:
+        print(f"[callback] exception: {e}")
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+
+async def _do_callback(request: Request, db: Session):
+    body = await request.body()
+    try:
+        token, aes_key = _get_token_and_aes_key()
+    except WecomCallbackError:
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    try:
+        raw_xml = body.decode("utf-8")
+        enc_match = re.search(r"<Encrypt><!\[CDATA\[(.*?)\]\]></Encrypt>", raw_xml, re.DOTALL)
+        if not enc_match:
+            return Response(content="success", media_type="text/plain; charset=utf-8")
+        encrypted = enc_match.group(1)
+        sig_match = re.search(r"<MsgSignature><!\[CDATA\[(.*?)\]\]></MsgSignature>", raw_xml)
+        ts_match = re.search(r"<TimeStamp>(.*?)</TimeStamp>", raw_xml)
+        nonce_match = re.search(r"<Nonce><!\[CDATA\[(.*?)\]\]></Nonce>", raw_xml)
+        if sig_match and ts_match and nonce_match:
+            _verify_signature(token, ts_match.group(1), nonce_match.group(1), encrypted, sig_match.group(1))
+        decrypted = _decrypt_message(encrypted, aes_key)
+    except Exception as exc:
+        print(f"[wx_kf] decrypt failed: {exc}")
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    try:
+        msg = _parse_message_xml(decrypted)
+    except Exception as exc:
+        print(f"[wx_kf] parse failed: {exc}")
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    msg_type = msg.get("MsgType", "")
+    content = msg.get("Content", "").strip()
+    from_user = msg.get("FromUserName", "")
+    to_user = msg.get("ToUserName", "")
+    if msg_type != "text" or not content:
+        return Response(content="success", media_type="text/plain; charset=utf-8")
+
+    intent = _detect_intent(content)
+    customer_name = ""
+    reply_text = ""
+
+    try:
+        if intent == "generate_link":
+            customer_name, reply_text = await _handle_generate_link(db, content, from_user)
+        elif intent == "learn":
+            reply_text = _handle_learn(db, content, from_user)
+        else:
+            # 企微回调有 5 秒限制：这里绝不能等待 LLM。
+            # 先用本地话术/提示秒回，再把完整 AI 处理放到后台主动推送。
+            playbooks = _search_playbooks(db, content, limit=3)
+            ref_name = _resolve_contextual_reference(db, from_user, content)
+            lookup_text = (f"查一下会员{ref_name}的资料" if ref_name else content)
+            customer_name, _member_ctx = _member_context(db, lookup_text)
+            if not customer_name and ref_name:
+                customer_name = ref_name
+            reply_text = _fallback_draft(content, playbooks)
+            reply_text = (reply_text + "\n\n🧠 我会交给云端 Hermes Agent 深度处理，稍后主动发你更完整的版本。")[:1800]
+            asyncio.create_task(_send_deep_reply_to_employee(from_user, content, intent, reply_text))
+            for pb in playbooks:
+                pb.usage_count = (pb.usage_count or 0) + 1
+            db.commit()
+        _save_log(db, from_user, content, intent, customer_name, reply_text)
+    except Exception as exc:
+        db.rollback()
+        print(f"[wx_kf] handle failed: {exc}")
+        reply_text = "收到，但我这边处理时遇到一点问题。你可以换个更明确的说法，比如：‘给清风徐来发链接’或‘客户担心隐私，怎么回？’"
+
+    try:
+        reply_xml = _build_text_reply_xml(from_user, to_user, reply_text)
+        encrypted_reply = _encrypt_reply(reply_xml, token, aes_key, settings.WECOM_CORP_ID)
+        return Response(content=encrypted_reply, media_type="application/xml; charset=utf-8")
+    except Exception as exc:
+        print(f"[wx_kf] encrypt reply failed: {exc}")
+        return Response(content="success", media_type="text/plain; charset=utf-8")

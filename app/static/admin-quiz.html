@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>屿风恋爱测试后台</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;background:#f6f1e8;color:#2c2420;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif} .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}.side{background:#2f261f;color:#fff;padding:28px 22px}.brand{font-size:22px;font-weight:800;margin-bottom:8px}.muted{color:rgba(255,255,255,.58);font-size:13px;line-height:1.7}.login{margin-top:24px;padding:16px;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(255,255,255,.06)}input,textarea,select{width:100%;border:1px solid #e4d8c8;border-radius:12px;padding:10px 12px;background:#fffdf9;color:#2c2420}textarea{min-height:74px;resize:vertical}.btn{border:0;border-radius:12px;padding:10px 14px;background:#3d3229;color:#fff;cursor:pointer;font-weight:700}.btn.ghost{background:#efe4d4;color:#3d3229}.btn.warn{background:#b45b4d}.quiz-list{margin-top:20px;display:grid;gap:10px}.quiz-tab{padding:14px;border-radius:14px;background:rgba(255,255,255,.08);cursor:pointer}.quiz-tab.active{background:#c9a962;color:#2c2420}.main{padding:30px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}.panel{background:#fffdf9;border-radius:24px;padding:22px;box-shadow:0 16px 40px rgba(80,60,40,.08);margin-bottom:20px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:start;margin-bottom:12px}.q-item,.r-item{border:1px solid #eadfce;border-radius:18px;padding:16px;margin-bottom:12px;background:#fff}.q-head,.r-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.small{font-size:12px;color:#8c7e72}.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#f1e6d5;color:#8a6630;font-size:12px}.actions{display:flex;gap:10px;flex-wrap:wrap}.hidden{display:none}.preview{background:#211b18;color:#fff;border-radius:20px;padding:18px}.qr{width:140px;height:140px;object-fit:contain;background:#fff;border-radius:12px;margin-top:10px}.notice{padding:12px 14px;border-radius:14px;background:#fff4cf;color:#755311;margin-bottom:16px}.danger{color:#b45b4d}.ok{color:#4f8a46}@media(max-width:900px){.app{grid-template-columns:1fr}.side{position:static}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">屿风恋爱测试后台</div>
+    <div class="muted">改题目、选项、展示类型，以及结果页文案和二维码引流图。保存后小程序会通过接口读取，失败时仍有本地兜底。</div>
+    <div class="login">
+      <div class="row"><label>账号</label><input id="username" value="admin"></div>
+      <div class="row"><label>密码</label><input id="password" type="password" placeholder="后台密码"></div>
+      <button class="btn" onclick="login()">登录后台</button>
+      <div id="loginMsg" class="small" style="margin-top:10px"></div>
+    </div>
+    <div class="quiz-list" id="quizList"></div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <div><h1 id="title">请选择问卷</h1><div id="sub" class="small"></div></div>
+      <div class="actions"><button class="btn ghost" onclick="loadQuizzes()">刷新</button><button class="btn" onclick="saveQuiz()">保存基础信息</button></div>
+    </div>
+    <div class="notice">注意：二维码图片 URL 可填 /static/... 或 https 图片地址。涉及微信审核时，小程序内直接放二维码可能有风险；这里先满足运营引流配置，提交审核前需按场景决定是否隐藏。</div>
+    <section class="panel" id="editor" style="display:none">
+      <h2>基础信息</h2>
+      <div class="grid">
+        <div class="row"><label>标题</label><input id="quizTitle"></div>
+        <div class="row"><label>类型</label><input id="quizType" disabled></div>
+        <div class="row"><label>发布</label><select id="published"><option value="true">已发布</option><option value="false">草稿</option></select></div>
+        <div class="row"><label>封面</label><input id="imageUrl" placeholder="可选"></div>
+      </div>
+      <div class="row"><label>说明</label><textarea id="description"></textarea></div>
+    </section>
+    <section class="panel" id="questionPanel" style="display:none">
+      <div class="q-head"><h2>题目配置</h2><button class="btn" onclick="addQuestion()">新增题目</button></div>
+      <div id="questions"></div>
+    </section>
+    <section class="panel" id="resultPanel" style="display:none">
+      <div class="r-head"><h2>结果页配置</h2><button class="btn" onclick="addResult()">新增结果</button></div>
+      <div class="small">每个结果可配置：标题、结果类型、描述、正文、特质、分数JSON、CTA文案、二维码图片。小程序结果页会读取这些字段。</div>
+      <div id="results"></div>
+    </section>
+  </main>
+</div>
+<script>
+let token=localStorage.getItem('yf_admin_token')||''; let quizzes=[]; let current=null;
+function api(path, opts={}){opts.headers=Object.assign({'Content-Type':'application/json'},opts.headers||{}); if(token) opts.headers.Authorization='Bearer '+token; return fetch(path,opts).then(async r=>{let d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.detail||d.msg||('HTTP '+r.status)); return d;});}
+function login(){api('/api/admin/auth/login',{method:'POST',body:JSON.stringify({username:username.value,password:password.value})}).then(d=>{token=d.token;localStorage.setItem('yf_admin_token',token);loginMsg.innerHTML='<span class="ok">登录成功</span>';loadQuizzes();}).catch(e=>loginMsg.innerHTML='<span class="danger">'+e.message+'</span>')}
+function loadQuizzes(){api('/api/admin/quizzes?page_size=100').then(d=>{quizzes=d.items||[]; renderQuizList(); if(!current&&quizzes[0]) openQuiz(quizzes[0].id);}).catch(e=>{loginMsg.innerHTML='<span class="danger">请先登录：'+e.message+'</span>'})}
+function renderQuizList(){quizList.innerHTML=quizzes.map(q=>`<div class="quiz-tab ${current&&current.id===q.id?'active':''}" onclick="openQuiz(${q.id})"><b>${q.title}</b><br><span class="small">${q.quiz_type} · ${q.questions_count||0}题 · ${q.is_published?'已发布':'草稿'}</span></div>`).join('')}
+function openQuiz(id){api('/api/admin/quizzes/'+id).then(d=>{current=d; renderQuizList(); renderEditor();})}
+function renderEditor(){editor.style.display=questionPanel.style.display=resultPanel.style.display='block'; title.textContent=current.title; sub.textContent='ID '+current.id+' / '+current.quiz_type; quizTitle.value=current.title||''; quizType.value=current.quiz_type||''; published.value=String(!!current.is_published); imageUrl.value=current.image_url||''; description.value=current.description||''; renderQuestions(); renderResults();}
+function saveQuiz(){if(!current)return; api('/api/admin/quizzes/'+current.id,{method:'PUT',body:JSON.stringify({title:quizTitle.value,description:description.value,image_url:imageUrl.value,is_published:published.value==='true'})}).then(()=>openQuiz(current.id));}
+function optText(options){return (options||[]).map(o=>o.label||o.value||'').join('\n')}
+function parseOptions(s){return s.split('\n').map(x=>x.trim()).filter(Boolean).map((x,i)=>({label:x,value:x,score:i+1}))}
+function renderQuestions(){questions.innerHTML=(current.questions||[]).map((q,i)=>`<div class="q-item" data-qid="${q.id}"><div class="q-head"><b>第${i+1}题</b><span class="tag">${q.question_type}</span></div><div class="grid"><div class="row"><label>字段名</label><input class="field_key" value="${q.field_key||''}"></div><div class="row"><label>类型</label><select class="question_type"><option ${q.question_type==='single_choice'?'selected':''}>single_choice</option><option ${q.question_type==='multi_choice'?'selected':''}>multi_choice</option><option ${q.question_type==='input'?'selected':''}>input</option><option ${q.question_type==='textarea'?'selected':''}>textarea</option></select></div><div class="row"><label>排序</label><input class="sort_order" type="number" value="${q.sort_order||0}"></div><div class="row"><label>输入类型</label><input class="input_type" value="${q.input_type||'text'}"></div></div><div class="row"><label>题目</label><textarea class="question_text">${q.question_text||''}</textarea></div><div class="row"><label>提示</label><input class="placeholder" value="${q.placeholder||''}"></div><div class="row"><label>选项<br><span class="small">一行一个</span></label><textarea class="options">${optText(q.options)}</textarea></div><div class="actions"><button class="btn ghost" onclick="saveQuestion(${q.id})">保存题目</button><button class="btn warn" onclick="deleteQuestion(${q.id})">删除</button></div></div>`).join('')}
+function getBox(id){return document.querySelector(`[data-qid="${id}"]`)}
+function saveQuestion(id){let b=getBox(id);let body={question_text:b.querySelector('.question_text').value,question_type:b.querySelector('.question_type').value,sort_order:Number(b.querySelector('.sort_order').value||0),options:parseOptions(b.querySelector('.options').value),field_key:b.querySelector('.field_key').value,placeholder:b.querySelector('.placeholder').value,input_type:b.querySelector('.input_type').value,required:true}; api('/api/admin/questions/'+id,{method:'PUT',body:JSON.stringify(body)}).then(()=>openQuiz(current.id));}
+function addQuestion(){api('/api/admin/quizzes/'+current.id+'/questions',{method:'POST',body:JSON.stringify({question_text:'新题目',question_type:'single_choice',sort_order:(current.questions||[]).length+1,field_key:'new_field',options:[{label:'选项A',value:'选项A',score:1}]})}).then(()=>openQuiz(current.id));}
+function deleteQuestion(id){if(confirm('确定删除题目？'))api('/api/admin/questions/'+id,{method:'DELETE'}).then(()=>openQuiz(current.id));}
+function renderResults(){results.innerHTML=(current.results||[]).map(r=>`<div class="r-item" data-rid="${r.id}"><div class="r-head"><b>${r.title||'未命名结果'}</b><span class="tag">${r.min_score}-${r.max_score}</span></div><div class="grid"><div class="row"><label>最低分</label><input class="min_score" type="number" value="${r.min_score||0}"></div><div class="row"><label>最高分</label><input class="max_score" type="number" value="${r.max_score||100}"></div><div class="row"><label>结果类型</label><input class="result_type" value="${r.result_type||''}"></div><div class="row"><label>标题</label><input class="r_title" value="${r.title||''}"></div></div><div class="row"><label>描述</label><textarea class="r_desc">${r.description||''}</textarea></div><div class="row"><label>正文</label><textarea class="r_content">${r.content||''}</textarea></div><div class="row"><label>特质<br><span class="small">逗号分隔</span></label><input class="traits" value="${(r.traits||[]).join('，')}"></div><div class="row"><label>分数JSON</label><textarea class="scores">${JSON.stringify(r.scores||{})}</textarea></div><div class="row"><label>CTA标题</label><input class="cta_title" value="${r.cta_title||''}"></div><div class="row"><label>CTA说明</label><textarea class="cta_desc">${r.cta_desc||''}</textarea></div><div class="row"><label>二维码URL</label><input class="qrcode_url" value="${r.qrcode_url||''}"></div>${r.qrcode_url?`<div class="preview"><div>${r.cta_title||'结果页二维码预览'}</div><img class="qr" src="${r.qrcode_url}"></div>`:''}<div class="actions"><button class="btn ghost" onclick="saveResult(${r.id})">保存结果</button><button class="btn warn" onclick="deleteResult(${r.id})">删除</button></div></div>`).join('')}
+function rbox(id){return document.querySelector(`[data-rid="${id}"]`)}
+function saveResult(id){let b=rbox(id);let scores={};try{scores=JSON.parse(b.querySelector('.scores').value||'{}')}catch(e){alert('分数JSON格式错误');return}let body={min_score:Number(b.querySelector('.min_score').value||0),max_score:Number(b.querySelector('.max_score').value||100),result_type:b.querySelector('.result_type').value,title:b.querySelector('.r_title').value,description:b.querySelector('.r_desc').value,content:b.querySelector('.r_content').value,traits:b.querySelector('.traits').value.split(/[，,]/).map(x=>x.trim()).filter(Boolean),scores,cta_title:b.querySelector('.cta_title').value,cta_desc:b.querySelector('.cta_desc').value,qrcode_url:b.querySelector('.qrcode_url').value};api('/api/admin/results/'+id,{method:'PUT',body:JSON.stringify(body)}).then(()=>openQuiz(current.id));}
+function addResult(){api('/api/admin/quizzes/'+current.id+'/results',{method:'POST',body:JSON.stringify({min_score:0,max_score:100,title:'新结果',description:'',content:'',qrcode_url:'/assets/images/wx-kf-yufeng-advisor.jpg',cta_title:'扫码咨询屿风顾问'})}).then(()=>openQuiz(current.id));}
+function deleteResult(id){if(confirm('确定删除结果？'))api('/api/admin/results/'+id,{method:'DELETE'}).then(()=>openQuiz(current.id));}
+if(token) loadQuizzes();
+</script>
+</body>
+</html>

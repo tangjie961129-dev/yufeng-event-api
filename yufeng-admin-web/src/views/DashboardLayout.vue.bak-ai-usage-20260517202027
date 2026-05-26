@@ -1,0 +1,257 @@
+<script setup>
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import {
+  DataBoard,
+  User,
+  Tickets,
+  Checked,
+  Brush,
+  Lock,
+  UserFilled,
+  Coin,
+  Wallet,
+  Setting,
+  Collection,
+  Picture,
+  Grid,
+  Bell,
+  Reading,
+  Document,
+  Link,
+  MagicStick,
+  PriceTag,
+  Expand,
+  Fold,
+  Connection,
+  ChatDotRound,
+  Promotion,
+  Operation,
+  TrendCharts,
+} from '@element-plus/icons-vue'
+
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+const sidebarOpen = ref(false)
+
+const menuGroups = [
+  {
+    title: '总后台 · 客服大脑',
+    desc: '私域/企微/话术/朋友圈运营',
+    items: [
+      { label: '总后台首页', path: '/dashboard', icon: DataBoard },
+      { label: '企微回补', path: '/wecom-backfill', icon: Connection },
+      { label: '会员标签', path: '/member-tags', icon: PriceTag },
+      { label: '引流表单', path: '/lead-forms', icon: Document },
+      { label: '引流归因', path: '/lead-attribution', icon: TrendCharts },
+      { label: '客服话术库', path: '/ops/scripts', icon: ChatDotRound },
+      { label: '朋友圈推送台', path: '/ops/moments', icon: Promotion },
+      { label: '指令动作中心', path: '/ops/actions', icon: Operation },
+    ],
+  },
+  {
+    title: '小程序业务后台',
+    desc: '会员/活动/订单/页面装修/分销',
+    items: [
+      { label: '业务概览', path: '/miniapp-dashboard', icon: DataBoard },
+      { label: 'UI装修', path: '/ui-config', icon: Brush },
+      { label: '分类管理', path: '/cms/categories', icon: Collection },
+      { label: 'Banner管理', path: '/cms/banners', icon: Picture },
+      { label: '页面组件', path: '/cms/widgets', icon: Grid },
+      { label: '公告管理', path: '/cms/announcements', icon: Bell },
+      { label: '课程管理', path: '/courses', icon: Reading },
+      { label: '问卷管理', path: '/quizzes', icon: Document },
+      { label: '匹配记录', path: '/love/matches', icon: Link },
+      { label: 'AI男友管理', path: '/love/boyfriend', icon: MagicStick },
+      { label: '主办方审核', path: '/certifications', icon: Checked },
+      { label: '活动审核', path: '/events', icon: Tickets },
+      { label: '订单台账', path: '/orders', icon: DataBoard },
+      { label: '报名管理', path: '/registrations', icon: Tickets },
+      { label: '用户管理', path: '/users', icon: User },
+      { label: '权限与后台账号', path: '/permissions', icon: Lock },
+      { label: '分销员管理', path: '/distributors', icon: UserFilled },
+      { label: '合伙人体系', path: '/partners', icon: UserFilled },
+      { label: '佣金台账', path: '/commissions', icon: Coin },
+      { label: '提现审核', path: '/withdrawals', icon: Wallet },
+      { label: '管理员管理', path: '/admins', icon: Setting },
+    ],
+  },
+]
+
+const activeMenu = computed(() => route.path)
+const isOpsRoute = computed(() => {
+  return route.path === '/dashboard' || route.path.startsWith('/ops') || ['/wecom-backfill', '/member-tags', '/lead-forms', '/lead-attribution'].includes(route.path)
+})
+
+const topCopy = computed(() => {
+  if (isOpsRoute.value) {
+    return {
+      title: '屿风总后台管理',
+      desc: '私域客服大脑、企微助手、朋友圈推送、话术库与运营状态',
+    }
+  }
+  return {
+    title: '屿风小程序业务后台',
+    desc: '小程序会员、活动、订单、页面装修、课程问卷、分销与权限管理',
+  }
+})
+
+const logout = () => {
+  authStore.logout()
+  router.push('/login')
+}
+
+function toggleSidebar() {
+  sidebarOpen.value = !sidebarOpen.value
+}
+
+function navigateTo(item) {
+  if (item.disabled) return
+  router.push(item.path)
+  sidebarOpen.value = false
+}
+</script>
+
+<template>
+  <div class="layout-shell">
+    <div class="sidebar-overlay" v-show="sidebarOpen" @click="sidebarOpen = false"></div>
+
+    <aside class="sidebar" :class="{ 'sidebar-open': sidebarOpen }">
+      <div class="brand">
+        <span>🌈</span>
+        <div>
+          <strong>屿风总后台</strong>
+          <small>Private Ops Center</small>
+        </div>
+      </div>
+      <div class="menu-groups">
+        <section v-for="group in menuGroups" :key="group.title" class="menu-group">
+          <div class="group-title">{{ group.title }}</div>
+          <div class="group-desc">{{ group.desc }}</div>
+          <button
+            v-for="item in group.items"
+            :key="item.path"
+            class="menu-item"
+            :class="{ active: activeMenu === item.path, disabled: item.disabled }"
+            type="button"
+            @click="navigateTo(item)"
+          >
+            <el-icon><component :is="item.icon" /></el-icon>
+            <span>{{ item.label }}</span>
+            <em v-if="item.disabled">待接</em>
+          </button>
+        </section>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <el-button class="menu-btn" @click="toggleSidebar" text>
+            <el-icon :size="22"><Expand v-if="!sidebarOpen" /><Fold v-else /></el-icon>
+          </el-button>
+          <div>
+            <div class="top-title">{{ topCopy.title }}</div>
+            <div class="top-desc">{{ topCopy.desc }}</div>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="admin-name">{{ authStore.user?.display_name || '管理员' }}</span>
+          <el-button @click="logout" size="small" round>退出登录</el-button>
+        </div>
+      </header>
+      <main class="content-wrap">
+        <router-view />
+      </main>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.layout-shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 270px;
+  background: linear-gradient(180deg, #0f172a, #111827);
+  padding: 20px 14px;
+  transition: transform .25s ease;
+  z-index: 100;
+  overflow-y: auto;
+}
+.brand {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand small { display: block; margin-top: 2px; color: #94a3b8; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.menu-groups { display: flex; flex-direction: column; gap: 18px; }
+.menu-group { padding: 12px; border-radius: 18px; background: rgba(255,255,255,.04); border: 1px solid rgba(148,163,184,.12); }
+.group-title { color: #f8fafc; font-weight: 800; font-size: 14px; }
+.group-desc { color: #94a3b8; font-size: 12px; margin: 4px 0 10px; }
+.menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  padding: 0 10px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+.menu-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+.menu-item.active { background: linear-gradient(135deg, #0f766e, #2563eb); color: #fff; }
+.menu-item.disabled { opacity: .5; cursor: not-allowed; }
+.menu-item em { margin-left: auto; color: #fde68a; font-size: 11px; font-style: normal; }
+.menu-btn { display: none; }
+.topbar {
+  min-height: 84px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.top-title { font-size: 24px; font-weight: 800; color: #111827; }
+.top-desc { color: #6b7280; margin-top: 4px; font-size: 14px; }
+.top-actions { display: flex; align-items: center; gap: 12px; }
+.admin-name { color: #374151; font-weight: 600; }
+.main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.content-wrap { padding: 24px; flex: 1; }
+.sidebar-overlay { display: none; }
+@media(max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    transform: translateX(-100%);
+    padding: 16px 12px;
+  }
+  .sidebar.sidebar-open { transform: translateX(0); }
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.35);
+    z-index: 99;
+  }
+  .menu-btn { display: inline-flex; }
+  .top-title { font-size: 18px; }
+  .top-desc { display: none; }
+  .topbar { padding: 0 12px; min-height: 60px; }
+  .content-wrap { padding: 12px; }
+  .top-actions .admin-name { display: none; }
+}
+</style>

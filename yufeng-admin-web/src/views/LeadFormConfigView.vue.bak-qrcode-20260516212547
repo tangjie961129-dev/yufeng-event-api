@@ -1,0 +1,307 @@
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import request from '../utils/request'
+
+const loading = ref(false)
+const saving = ref(false)
+const forms = ref([])
+const selectedId = ref(null)
+const activeFieldIndex = ref(0)
+
+const editor = reactive({
+  id: null,
+  slug: '',
+  name: '',
+  title: '',
+  description: '',
+  scene: 'public_wechat',
+  status: 'draft',
+  version: 1,
+  fields: [],
+  ui_schema: { submit_text: '提交资料', success_title: '资料已提交', success_desc: '', theme: 'warm_luxury' },
+})
+
+const fieldTypes = [
+  { label: '单行文本', value: 'text' },
+  { label: '数字', value: 'number' },
+  { label: '下拉选择', value: 'select' },
+  { label: '单选', value: 'radio' },
+  { label: '多选', value: 'checkbox' },
+  { label: '多行文本', value: 'textarea' },
+  { label: '单图上传', value: 'image' },
+  { label: '多图上传', value: 'images' },
+]
+
+const statusText = (status) => ({ draft: '草稿', published: '已发布', archived: '已归档' }[status] || status)
+const currentForm = computed(() => forms.value.find((item) => item.id === selectedId.value))
+const fieldsSorted = computed(() => [...editor.fields].sort((a, b) => (a.sort || 0) - (b.sort || 0)))
+
+const normalizeForm = (row) => {
+  editor.id = row.id
+  editor.slug = row.slug || ''
+  editor.name = row.name || ''
+  editor.title = row.title || ''
+  editor.description = row.description || ''
+  editor.scene = row.scene || 'public_wechat'
+  editor.status = row.status || 'draft'
+  editor.version = row.version || 1
+  editor.fields = (row.form_schema?.fields || []).map((field, index) => ({
+    key: field.key || `field_${index + 1}`,
+    label: field.label || '',
+    type: field.type || 'text',
+    required: !!field.required,
+    placeholder: field.placeholder || '',
+    help_text: field.help_text || '',
+    options: field.options || [],
+    profile_field: field.profile_field || field.key || '',
+    tag_enabled: !!field.tag_enabled,
+    sort: field.sort ?? (index + 1) * 10,
+    upload: field.upload || (['image', 'images'].includes(field.type) ? { max_count: field.type === 'images' ? 3 : 1, max_size_mb: 5, accept: 'image/*', compress: true, sync_to_profile_photo: false, sync_to_wecom_remark_pic: false } : null),
+  }))
+  editor.ui_schema = { submit_text: '提交资料', success_title: '资料已提交', success_desc: '', theme: 'warm_luxury', ...(row.ui_schema || {}) }
+  activeFieldIndex.value = 0
+}
+
+const loadForms = async () => {
+  loading.value = true
+  try {
+    const res = await request.get('/lead-forms')
+    forms.value = res || []
+    if (!selectedId.value && forms.value.length) selectedId.value = forms.value[0].id
+    const target = forms.value.find((item) => item.id === selectedId.value) || forms.value[0]
+    if (target) normalizeForm(target)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '加载引流表单失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const selectForm = (row) => {
+  selectedId.value = row.id
+  normalizeForm(row)
+}
+
+const addField = () => {
+  const next = editor.fields.length + 1
+  editor.fields.push({
+    key: `field_${Date.now()}`,
+    label: '新字段',
+    type: 'text',
+    required: false,
+    placeholder: '',
+    help_text: '',
+    options: [],
+    profile_field: '',
+    tag_enabled: false,
+    sort: next * 10,
+    upload: null,
+  })
+  activeFieldIndex.value = editor.fields.length - 1
+}
+
+const onFieldTypeChange = (field) => {
+  if (['image', 'images'].includes(field.type)) {
+    field.upload = field.upload || { max_count: field.type === 'images' ? 3 : 1, max_size_mb: 5, accept: 'image/*', compress: true, sync_to_profile_photo: true, sync_to_wecom_remark_pic: field.type === 'images' }
+    if (field.type === 'image') field.upload.max_count = 1
+  } else {
+    field.upload = null
+  }
+}
+
+const removeField = async (index) => {
+  await ElMessageBox.confirm('确定删除这个字段？', '确认删除', { type: 'warning' })
+  editor.fields.splice(index, 1)
+  activeFieldIndex.value = Math.max(0, activeFieldIndex.value - 1)
+}
+
+const addOption = (field) => {
+  field.options.push({ label: '选项', value: `option_${field.options.length + 1}` })
+}
+
+const removeOption = (field, optionIndex) => {
+  field.options.splice(optionIndex, 1)
+}
+
+const payload = () => ({
+  slug: editor.slug,
+  name: editor.name,
+  title: editor.title,
+  description: editor.description,
+  scene: editor.scene,
+  fields: editor.fields,
+  ui_schema: editor.ui_schema,
+})
+
+const save = async () => {
+  if (!editor.id) return
+  if (!editor.name.trim() || !editor.slug.trim()) {
+    ElMessage.warning('请填写表单名称和 slug')
+    return
+  }
+  saving.value = true
+  try {
+    const row = await request.put(`/lead-forms/${editor.id}`, payload())
+    ElMessage.success('已保存草稿')
+    const idx = forms.value.findIndex((item) => item.id === row.id)
+    if (idx >= 0) forms.value[idx] = row
+    normalizeForm(row)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+const publish = async () => {
+  if (!editor.id) return
+  await save()
+  try {
+    const row = await request.post(`/lead-forms/${editor.id}/publish`)
+    ElMessage.success('已发布')
+    const idx = forms.value.findIndex((item) => item.id === row.id)
+    if (idx >= 0) forms.value[idx] = row
+    normalizeForm(row)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '发布失败')
+  }
+}
+
+const duplicate = async () => {
+  if (!editor.id) return
+  const row = await request.post(`/lead-forms/${editor.id}/duplicate`)
+  ElMessage.success('已复制为新草稿')
+  forms.value.unshift(row)
+  selectedId.value = row.id
+  normalizeForm(row)
+}
+
+onMounted(loadForms)
+</script>
+
+<template>
+  <div class="lead-page" v-loading="loading">
+    <div class="page-head">
+      <div>
+        <p class="eyebrow">Lead Form Builder</p>
+        <h1>引流表单配置</h1>
+        <p>Phase 1：先把“公开引流登记表”做成后台可配置版本。当前只管理表单结构，不影响现有小程序登记页。</p>
+      </div>
+      <div class="head-actions">
+        <el-button @click="loadForms">刷新</el-button>
+        <el-button @click="duplicate" :disabled="!editor.id">复制表单</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存草稿</el-button>
+        <el-button type="success" @click="publish">发布</el-button>
+      </div>
+    </div>
+
+    <div class="workspace">
+      <aside class="form-list">
+        <div class="panel-title">表单列表</div>
+        <button v-for="row in forms" :key="row.id" class="form-card" :class="{ active: row.id === selectedId }" @click="selectForm(row)">
+          <strong>{{ row.name }}</strong>
+          <span>{{ row.slug }}</span>
+          <em>{{ statusText(row.status) }} · v{{ row.version }}</em>
+        </button>
+      </aside>
+
+      <main class="editor" v-if="editor.id">
+        <el-card shadow="never" class="meta-card">
+          <template #header><strong>基础信息</strong></template>
+          <el-form label-position="top">
+            <div class="grid-2">
+              <el-form-item label="表单名称"><el-input v-model="editor.name" /></el-form-item>
+              <el-form-item label="Slug"><el-input v-model="editor.slug" /></el-form-item>
+              <el-form-item label="页面标题"><el-input v-model="editor.title" /></el-form-item>
+              <el-form-item label="场景"><el-input v-model="editor.scene" /></el-form-item>
+            </div>
+            <el-form-item label="说明"><el-input v-model="editor.description" type="textarea" :rows="2" /></el-form-item>
+            <div class="grid-2">
+              <el-form-item label="提交按钮文案"><el-input v-model="editor.ui_schema.submit_text" /></el-form-item>
+              <el-form-item label="提交成功标题"><el-input v-model="editor.ui_schema.success_title" /></el-form-item>
+            </div>
+            <el-form-item label="提交成功说明"><el-input v-model="editor.ui_schema.success_desc" type="textarea" :rows="2" /></el-form-item>
+          </el-form>
+        </el-card>
+
+        <el-card shadow="never" class="fields-card">
+          <template #header>
+            <div class="card-header"><strong>字段配置</strong><el-button size="small" type="primary" @click="addField">新增字段</el-button></div>
+          </template>
+          <div class="field-grid">
+            <div class="field-tabs">
+              <button v-for="(field, index) in fieldsSorted" :key="field.key + index" :class="{ active: activeFieldIndex === editor.fields.indexOf(field) }" @click="activeFieldIndex = editor.fields.indexOf(field)">
+                <span>{{ field.label || field.key }}</span>
+                <em>{{ field.type }} · {{ field.required ? '必填' : '选填' }}</em>
+              </button>
+            </div>
+            <div class="field-editor" v-if="editor.fields[activeFieldIndex]">
+              <el-form label-position="top">
+                <div class="grid-3">
+                  <el-form-item label="字段 Key"><el-input v-model="editor.fields[activeFieldIndex].key" /></el-form-item>
+                  <el-form-item label="标题"><el-input v-model="editor.fields[activeFieldIndex].label" /></el-form-item>
+                  <el-form-item label="类型"><el-select v-model="editor.fields[activeFieldIndex].type" @change="onFieldTypeChange(editor.fields[activeFieldIndex])"><el-option v-for="item in fieldTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
+                  <el-form-item label="排序"><el-input-number v-model="editor.fields[activeFieldIndex].sort" :step="10" /></el-form-item>
+                  <el-form-item label="映射会员字段"><el-input v-model="editor.fields[activeFieldIndex].profile_field" /></el-form-item>
+                  <el-form-item label="必填"><el-switch v-model="editor.fields[activeFieldIndex].required" /></el-form-item>
+                </div>
+                <el-form-item label="占位提示"><el-input v-model="editor.fields[activeFieldIndex].placeholder" /></el-form-item>
+                <el-form-item label="帮助说明"><el-input v-model="editor.fields[activeFieldIndex].help_text" /></el-form-item>
+                <div v-if="['image','images'].includes(editor.fields[activeFieldIndex].type)" class="options-box">
+                  <div class="option-head"><strong>图片上传设置</strong></div>
+                  <div class="grid-3">
+                    <el-form-item label="最多张数"><el-input-number v-model="editor.fields[activeFieldIndex].upload.max_count" :min="1" :max="9" /></el-form-item>
+                    <el-form-item label="单张最大 MB"><el-input-number v-model="editor.fields[activeFieldIndex].upload.max_size_mb" :min="1" :max="20" /></el-form-item>
+                    <el-form-item label="允许类型"><el-input v-model="editor.fields[activeFieldIndex].upload.accept" /></el-form-item>
+                    <el-form-item label="压缩"><el-switch v-model="editor.fields[activeFieldIndex].upload.compress" /></el-form-item>
+                    <el-form-item label="同步会员近照"><el-switch v-model="editor.fields[activeFieldIndex].upload.sync_to_profile_photo" /></el-form-item>
+                    <el-form-item label="首张同步企微描述图"><el-switch v-model="editor.fields[activeFieldIndex].upload.sync_to_wecom_remark_pic" /></el-form-item>
+                  </div>
+                </div>
+                <div v-if="['select','radio','checkbox'].includes(editor.fields[activeFieldIndex].type)" class="options-box">
+                  <div class="option-head"><strong>选项</strong><el-button size="small" @click="addOption(editor.fields[activeFieldIndex])">加选项</el-button></div>
+                  <div v-for="(opt, oi) in editor.fields[activeFieldIndex].options" :key="oi" class="option-row">
+                    <el-input v-model="opt.label" placeholder="显示文案" />
+                    <el-input v-model="opt.value" placeholder="存储值" />
+                    <el-button text type="danger" @click="removeOption(editor.fields[activeFieldIndex], oi)">删除</el-button>
+                  </div>
+                </div>
+                <el-button type="danger" plain @click="removeField(activeFieldIndex)">删除字段</el-button>
+              </el-form>
+            </div>
+          </div>
+        </el-card>
+      </main>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.lead-page { display: flex; flex-direction: column; gap: 18px; }
+.page-head { background: linear-gradient(135deg, #0f766e, #2563eb); color: #fff; border-radius: 22px; padding: 24px; display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
+.page-head h1 { margin: 4px 0 8px; font-size: 28px; }
+.page-head p { margin: 0; opacity: .9; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .75 !important; }
+.head-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.workspace { display: grid; grid-template-columns: 280px 1fr; gap: 18px; }
+.form-list, .editor { min-width: 0; }
+.form-list { background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; padding: 14px; height: fit-content; }
+.panel-title { font-weight: 800; margin-bottom: 12px; }
+.form-card { width: 100%; border: 1px solid #e5e7eb; background: #fff; border-radius: 14px; padding: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; text-align: left; cursor: pointer; }
+.form-card.active { border-color: #0f766e; background: #ecfdf5; }
+.form-card span { color: #64748b; font-size: 12px; }
+.form-card em { color: #0f766e; font-size: 12px; font-style: normal; }
+.editor { display: flex; flex-direction: column; gap: 18px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.card-header, .option-head { display: flex; justify-content: space-between; align-items: center; }
+.field-grid { display: grid; grid-template-columns: 240px 1fr; gap: 18px; }
+.field-tabs { display: flex; flex-direction: column; gap: 8px; }
+.field-tabs button { border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px; background: #fff; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.field-tabs button.active { border-color: #2563eb; background: #eff6ff; }
+.field-tabs em { color: #64748b; font-size: 12px; font-style: normal; }
+.options-box { border: 1px dashed #cbd5e1; border-radius: 14px; padding: 12px; margin-bottom: 14px; }
+.option-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; margin-top: 10px; }
+@media (max-width: 900px) { .page-head, .workspace, .field-grid, .grid-2, .grid-3 { display: flex; flex-direction: column; } }
+</style>
