@@ -231,6 +231,12 @@ def _query_member_sync(db: Session, content: str) -> str | None:
     ).order_by(MemberProfile.updated_at.desc()).first()
 
     if profile:
+        try:
+            from datetime import datetime, timezone
+            profile.last_contact_at = datetime.now(timezone.utc)
+            db.flush()
+        except:
+            pass
         return _build_member_info_reply(profile)
 
     return None
@@ -289,6 +295,16 @@ def _recommend_match_sync(db: Session, content: str, employee_userid: str) -> st
 
     # 3. 截取前 3-5 个推荐（避免太长）
     MAX_SHOW = 5
+        # 记录推荐匹配时间
+    try:
+        from datetime import datetime, timezone
+        for entity in combined:
+            if hasattr(entity, 'last_contact_at'):
+                entity.last_contact_at = datetime.now(timezone.utc)
+        db.flush()
+    except:
+        pass
+
     featured = combined[:MAX_SHOW]
 
     # 4. 构建匹配推荐文本

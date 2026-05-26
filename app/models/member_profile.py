@@ -69,5 +69,8 @@ class MemberProfile(Base):
     level = Column(String(2), default="", comment="运营层级 S/A/B/C")
     level_score = Column(Integer, nullable=True, comment="层级评分(0-100)")
     
+    # 最后一次跟进时间
+    last_contact_at = Column(DateTime(timezone=True), nullable=True, comment="最后一次员工跟进时间")
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
