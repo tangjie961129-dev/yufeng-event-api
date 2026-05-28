@@ -3,12 +3,12 @@
 POST /api/approve 接收密码+指令，修改 today_posts.json 审批标记
 """
 from fastapi import APIRouter, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 import json, os, subprocess
 
 router = APIRouter(prefix="/api", tags=["审批"])
 
-APPROVE_PASSWORD = "yufeng2026"
+APPROVE_PASSWORD="yufeng2026"
 YUFENG_DAILY = os.path.expanduser("~/yufeng-daily")
 QUEUE_DIR = "/home/ubuntu/data/queue"
 
@@ -96,9 +96,5 @@ async def approve_action(
         else:
             results.append(f"⚠️ 群发队列文件不存在（{queue_path}）")
 
-    return JSONResponse(content={
-        "success": True,
-        "message": " | ".join(results),
-        "action": action,
-        "date": today,
-    })
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/posts/{today}/", status_code=303)

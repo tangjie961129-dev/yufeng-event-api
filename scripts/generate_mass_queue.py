@@ -17,6 +17,16 @@ from level_scorer import evaluate_level
 USED_FILE = os.path.join(REF_DIR, "used_mass_send.json")
 QUEUE_FILE = os.path.join(QUEUE_DIR, "pending_queue.json")
 
+# Mass send reference corpus
+MASS_SAMPLES_FILE = os.path.join(os.path.expanduser("~/yufeng-daily"), "references", "mass-send-samples", "1.txt")
+
+def load_mass_samples():
+    try:
+        with open(MASS_SAMPLES_FILE, "r", encoding="utf-8") as f:
+            return f.read()[:3000]
+    except:
+        return ""
+
 # Ton API config
 TON_API_KEY = None
 TON_API_BASE = "https://api.sgyer.cn"
