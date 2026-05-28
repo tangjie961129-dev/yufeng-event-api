@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """群发队列生成 - 独立于每日推荐，独立去重"""
-import json, os, sys, random, requests, time
+import json, os, sys, requests, time, base64
 from datetime import datetime, date
 
 BASE_DIR = os.path.expanduser("~/yufeng-event-api")
 REF_DIR = os.path.join(BASE_DIR, "references")
 QUEUE_DIR = os.path.join(BASE_DIR, "mass_queue")
+PREVIEW_DIR = "/var/www/yufeng/queue"
+IMAGE_DIR = os.path.join(PREVIEW_DIR, "images")
 os.makedirs(QUEUE_DIR, exist_ok=True)
+os.makedirs(IMAGE_DIR, exist_ok=True)
 
 sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
 from level_scorer import evaluate_level
@@ -14,18 +17,33 @@ from level_scorer import evaluate_level
 USED_FILE = os.path.join(REF_DIR, "used_mass_send.json")
 QUEUE_FILE = os.path.join(QUEUE_DIR, "pending_queue.json")
 
+# Ton API config
+TON_API_KEY = None
+TON_API_BASE = "https://api.sgyer.cn"
+env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(env_path):
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("TON_API_KEY="):
+                TON_API_KEY = line.split("=", 1)[1]
+            if line.startswith("TON_API_BASE_URL="):
+                TON_API_BASE = line.split("=", 1)[1]
+
+
 def load_used():
     if os.path.exists(USED_FILE):
         with open(USED_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {"S": [], "A": [], "B": [], "C": []}
 
+
 def save_used(used):
     with open(USED_FILE, "w", encoding="utf-8") as f:
         json.dump(used, f, ensure_ascii=False, indent=2)
 
+
 def get_conn():
-    env_path = os.path.join(BASE_DIR, ".env")
     if not os.path.exists(env_path):
         return None
     with open(env_path) as f:
@@ -34,6 +52,7 @@ def get_conn():
                 import psycopg2
                 return psycopg2.connect(line.strip().replace("DATABASE_URL=", ""))
     return None
+
 
 def load_all_members():
     conn = get_conn()
@@ -80,6 +99,7 @@ def load_all_members():
     conn.close()
     return members
 
+
 def pick_members_by_level(all_members, used):
     result = {}
     already_used = {lv: set(names) for lv, names in used.items()}
@@ -110,28 +130,49 @@ def pick_members_by_level(all_members, used):
         print(f"  ✅ {lv}级: {chosen['name']} | {chosen.get('city','')} | {chosen.get('age','')}岁 | 评分{pool[0][1]}")
     return result
 
-def generate_mass_text(member, level):
+
+def generate_mass_text(member):
     name = member.get("name", "")
-    city = member.get("city", "")
     age = member.get("age", "")
     job = member.get("job", "")
     height = member.get("height", "")
+    education = member.get("education", "")
+    body_type = member.get("body_type", "")
+    role = member.get("role", "")
     tags = member.get("self_tags", "")
     ideal = member.get("ideal_desc", "")
+    experience = member.get("experience", "")
+    love_habits = member.get("love_habits", "")
+    priority = member.get("priority", "")
     extra = member.get("extra", "")
+    single_duration = member.get("single_duration", "")
+    out_status = member.get("out_status", "")
+    mbti = member.get("mbti", "")
+    ideal_relation = member.get("ideal_relation", "")
 
     prompt = (
-        f"以屿风创始人阿杰的语气，写一段群发给{level}级客户的推荐文案，用'宝子'开头。\n\n"
-        f"要推荐的这个{level}级会员信息如下：\n"
-        f"昵称：{name} | {city} | {age}岁 | {job} | {height}\n"
-        f"个人特点：{tags}\n理想型：{ideal}\n其他：{extra}\n\n"
+        f"以屿风创始人阿杰的语气，写一段群发推荐文案，用'宝子'开头。\n\n"
+        f"要推荐的会员信息如下：\n"
+        f"年龄：{age}岁 | 职业：{job} | 身高：{height} | 学历：{education}\n"
+        f"体型：{body_type} | 属性：{role} | 单身时长：{single_duration}\n"
+        f"个人特点：{tags}\n"
+        f"恋爱历史：{experience}\n"
+        f"恋爱癖好：{love_habits}\n"
+        f"最重要的因素：{priority}\n"
+        f"理想型：{ideal}\n"
+        f"理想伴侣关系：{ideal_relation}\n"
+        f"出柜情况：{out_status}\n"
+        f"MBTI：{mbti}\n"
+        f"其他：{extra}\n\n"
         f"要求：\n"
-        f"1. 开头用'宝子'（不是该会员的名字），这是一条群发给多个客户的消息\n"
-        f"2. 语气像阿杰私下推荐，真诚自然，不官方\n"
-        f"3. 结合会员的真实信息，有具体细节让人有画面感\n"
-        f"4. 不用提该会员的真实昵称，用'咱们这位XX级会员'之类描述\n"
-        f"5. 60-100字，简洁有力\n"
+        f"1. 开头用'宝子'，这是一条群发给多个客户的消息\n"
+        f"2. 语气像阿杰私下推荐，真诚有温度，像朋友在认真介绍一个人\n"
+        f"3. 结合会员的真实信息，用具体细节让人有画面感，显得资料很详实\n"
+        f"4. 不用提该会员的真实昵称，用'咱们这位会员'之类描述\n"
+        f"5. 80-130字，信息量要足，让人感觉这个会员资料很详细很靠谱\n"
         f"6. 结尾自然收束，如'有意向跟我说'\n"
+        f"7. 绝对不要出现城市、地名或地域信息\n"
+        f"8. 会员都是男性，只能用'他'不用'她'\n"
         f"只输出正文。"
     )
     try:
@@ -142,17 +183,67 @@ def generate_mass_text(member, level):
             json={
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": "你是屿风创始人阿杰，说话真诚有温度，像朋友在认真推荐一个人。"},
+                    {"role": "system", "content": "你是屿风创始人阿杰，说话真诚有温度，像朋友在认真推荐一个人。文案要有信息量，用具体的细节让人感受到这个会员的真实和靠谱。"},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 500, "temperature": 0.95
+                "max_tokens": 600, "temperature": 0.9
             },
             timeout=180
         )
         return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
         print(f"  WARN: LLM failed: {e}", file=sys.stderr)
-        return f"宝子，咱们最近来了位{level}级会员，{city}的，{age}岁做{job}的，条件挺不错的，有意向跟我说。"
+        return f"宝子，咱们这位会员{age}岁做{job}的，条件挺不错的，有意向跟我说。"
+
+
+def generate_images(level_items):
+    """为每个会员生成配图（独立步骤，失败不影响文案）"""
+    for item in level_items:
+        lv = item["level"]
+        m = item["member"]
+        img_path = os.path.join(IMAGE_DIR, f"{lv}.png")
+        if os.path.exists(img_path):
+            print(f"  🖼️ {lv} 配图已存在，跳过")
+            item["image"] = img_path
+            continue
+
+        prompt_text = (
+            f"A warm, tasteful portrait of a handsome East Asian man, "
+            f"in smart casual wear. Soft lighting, cream background. "
+            f"Gentle smile, approachable expression. "
+            f"Photorealistic, high-end portrait photography. "
+            f"No text, no logos."
+        )
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    f"{TON_API_BASE}/v1/images/generations",
+                    headers={"Authorization": f"Bearer {TON_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "model": "gpt-image-2",
+                        "prompt": prompt_text,
+                        "n": 1,
+                        "size": "1024x1024",
+                        "response_format": "b64_json",
+                    },
+                    timeout=90
+                )
+                data = resp.json()
+                b64 = data.get("data", [{}])[0].get("b64_json", "")
+                if b64:
+                    with open(img_path, "wb") as f:
+                        f.write(base64.b64decode(b64))
+                    print(f"  🖼️ {lv} 配图成功")
+                    item["image"] = img_path
+                    break
+                else:
+                    print(f"  ⚠️ {lv} 配图无b64 (attempt {attempt+1})")
+            except Exception as e:
+                print(f"  ⚠️ {lv} 配图失败 (attempt {attempt+1}): {type(e).__name__}")
+            time.sleep(2)
+        else:
+            print(f"  ⚠️ {lv} 配图跳过")
+
 
 def save_queue(level_items, today_str):
     queue = {
@@ -160,10 +251,84 @@ def save_queue(level_items, today_str):
         "generated_at": datetime.now().isoformat(),
         "items": level_items,
         "status": "pending",
+        "sender": "",
     }
     with open(QUEUE_FILE, "w", encoding="utf-8") as f:
         json.dump(queue, f, ensure_ascii=False, indent=2)
     print(f"  💾 待群发列表已保存: {QUEUE_FILE}")
+
+
+def generate_mass_preview_html(level_items, today_str):
+    count_by_level = {}
+    for item in level_items:
+        lv = item["level"]
+        count_by_level[lv] = count_by_level.get(lv, 0) + 1
+
+    slots_html = ""
+    for item in level_items:
+        lv = item["level"]
+        m = item["member"]
+        text = item["text"]
+        img_path = item.get("image", "")
+        img_html = ""
+        if img_path and os.path.exists(img_path):
+            img_rel = os.path.join("..", "images", os.path.basename(img_path))
+            img_html = f'<img src="{img_rel}" class="member-photo" alt="{lv}">'
+        slots_html += f'''
+<div class="msg-item level-{lv.lower()}">
+  <div class="msg-header">
+    <span class="level-badge level-{lv.lower()}">{lv}</span>
+    <span class="member-name">{m.get('name','?')}</span>
+    <span class="member-meta">{m.get('age','?')}岁 · {m.get('job','?')} · {m.get('height','?')}</span>
+  </div>
+  {img_html}
+  <div class="msg-content">{text}</div>
+</div>'''
+
+    total = len(level_items)
+    level_summary = " | ".join([f"{lv}: {count_by_level.get(lv,0)}条" for lv in ["S","A","B","C"]])
+
+    html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>屿风群发预览 - {today_str}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#f5f0eb;font-family:-apple-system,'PingFang SC','Helvetica Neue',sans-serif;color:#2d2a27;padding:20px}}
+.container{{max-width:600px;margin:0 auto}}
+.header{{text-align:center;padding:24px 0 16px}}
+.header h1{{font-size:20px;font-weight:600;color:#DFA9AC}}
+.header .date{{font-size:14px;color:#999;margin-top:4px}}
+.summary-bar{{text-align:center;padding:12px;margin-bottom:16px;background:#fff8f0;border-radius:12px;font-size:13px;color:#666;border:1px solid #f0e0d0}}
+.summary-bar strong{{color:#DFA9AC}}
+.msg-item{{background:#fff;border-radius:12px;margin-bottom:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid #ccc}}
+.level-s{{border-left-color:#e74c3c}} .level-a{{border-left-color:#e67e22}} .level-b{{border-left-color:#f1c40f}} .level-c{{border-left-color:#95a5a6}}
+.msg-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}}
+.level-badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:#fff}}
+.level-s{{background:#e74c3c}} .level-a{{background:#e67e22}} .level-b{{background:#d4a017}} .level-c{{background:#95a5a6}}
+.member-name{{font-weight:600;font-size:14px}}
+.member-meta{{font-size:12px;color:#999}}
+.member-photo{{width:100%;border-radius:8px;margin-bottom:10px;max-height:300px;object-fit:cover}}
+.msg-content{{font-size:14px;line-height:1.7;color:#444;white-space:pre-wrap}}
+.footer{{text-align:center;padding:24px 0;font-size:12px;color:#bbb}}
+</style>
+</head><body>
+<div class="container">
+  <div class="header">
+    <h1>📨 今日群发预览</h1>
+    <div class="date">{today_str}</div>
+  </div>
+  <div class="summary-bar">
+    总计 <strong>{total}条</strong> | {level_summary}<br>
+    发送账号：TangJieSiRenHao（私人号）
+  </div>
+  {slots_html}
+  <div class="footer">在飞书回复「确认所有」后执行群发</div>
+</div>
+</body></html>'''
+    return html
+
 
 def mark_used(level_items):
     used = load_used()
@@ -174,6 +339,7 @@ def mark_used(level_items):
             used.setdefault(lv, []).append(name)
     save_used(used)
     print(f"  ✅ 群发已推荐列表已更新")
+
 
 def main():
     today = date.today()
@@ -204,15 +370,16 @@ def main():
         if not member:
             continue
         print(f"\n  ━━ {lv}级 · {member['name']} ━━")
-        print(f"     {member.get('city','')} | {member.get('age','')}岁 | {member.get('job','')}")
+        print(f"     {member.get('age','')}岁 | {member.get('job','')} | {member.get('height','')}")
 
         print(f"    ✍️ 生成群发文案...")
-        text = generate_mass_text(member, lv)
+        text = generate_mass_text(member)
 
         level_items.append({
             "level": lv,
             "member": member,
             "text": text,
+            "image": "",
             "confirmed": False,
         })
         print(f"    ✅ {lv}级完成")
@@ -224,17 +391,35 @@ def main():
     save_queue(level_items, today_str)
     mark_used(level_items)
 
+    # 生成配图（独立步骤）
+    print(f"\n  🖼️ 生成配图...")
+    generate_images(level_items)
+
+    # 重新保存队列（补充配图路径）
+    save_queue(level_items, today_str)
+
+    # 生成预览网页
+    preview_html = generate_mass_preview_html(level_items, today_str)
+    preview_dir = os.path.join(PREVIEW_DIR, today_str)
+    os.makedirs(preview_dir, exist_ok=True)
+    with open(os.path.join(preview_dir, "index.html"), "w", encoding="utf-8") as f:
+        f.write(preview_html)
+    preview_url = f"https://yufeng.team/queue/{today_str}/"
+
     print(f"\n{'='*40}")
     print(f"📋 今日群发待发送列表")
     for item in level_items:
         lv = item["level"]
         m = item["member"]
-        print(f"\n── {lv}级 · {m['name']} ──")
-        print(f"  {m.get('city','')} | {m.get('age','')}岁 | {m.get('job','')} | {m.get('height','')}")
-        print(f"  📝 {item['text'][:120]}...")
+        has_img = "🖼️" if item.get("image") else "🚫"
+        print(f"\n── {lv}级 · {m['name']} {has_img}──")
+        print(f"  {m.get('age','')}岁 | {m.get('job','')} | {m.get('height','')}")
+        print(f"  📝 {item['text'][:150]}...")
 
-    print(f"\n💡 回应「确认群发」→ 推送至待群发列表等待发送")
-    print(f"💡 回应「改{level_items[0]['level']}文案为...」→ 修改某条")
+    print(f"\n🌐 预览链接: {preview_url}")
+    print(f"💡 回应「确认所有」→ 推送至待群发列表等待发送")
+    print(f"💡 回应「改S文案为...」→ 修改某条")
+
 
 if __name__ == "__main__":
     main()

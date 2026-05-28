@@ -39,8 +39,22 @@ MESSAGE_TEMPLATES = {
 }
 
 
+def compute_age_from_birth(birth_info: str) -> str:
+    """从出生日期计算年龄"""
+    if not birth_info:
+        return "未知"
+    try:
+        from datetime import datetime
+        bday = datetime.strptime(birth_info.strip()[:10], "%Y-%m-%d")
+        now = datetime.now()
+        return str(now.year - bday.year - ((now.month, now.day) < (bday.month, bday.day)))
+    except (ValueError, IndexError):
+        return "未知"
+
+
 def build_member_context(mp) -> dict:
     """从 MemberProfile 提取群发所需的字段"""
+    # 尝试从 lifestyle_status 解析结构化数据
     ls = mp.lifestyle_status or ""
     lines_map = {}
     if ls:
@@ -49,9 +63,13 @@ def build_member_context(mp) -> dict:
                 k, v = line.split("：", 1)
                 lines_map[k.strip()] = v.strip()
 
-    age = mp.age or lines_map.get("年龄", "未知")
+    # age: 从 birth_info 计算
+    age = compute_age_from_birth(mp.birth_info)
+    if age == "未知":
+        age = lines_map.get("年龄", "未知")
+
     job = mp.job or lines_map.get("职业", "未知")
-    height = mp.height or lines_map.get("身高", "未知")
+    height = str(mp.height or "") if mp.height else lines_map.get("身高", "未知")
     city = mp.city or lines_map.get("现居城市", "未知")
 
     # 性格描述 - 从多个字段拼
@@ -60,9 +78,28 @@ def build_member_context(mp) -> dict:
         val = lines_map.get(key, "")
         if val:
             personality_parts.append(val)
+    
+    # lifestyle_status 为空时，从其他字段补充
+    if not personality_parts:
+        for field in [mp.self_tags, mp.hobbies, mp.attitude_live, mp.social_info, mp.current_situation]:
+            if field:
+                val = field.strip()[:60]
+                if val:
+                    personality_parts.append(val)
+                    break
+    
     personality = "，".join(personality_parts[:2]) if personality_parts else "性格很好"
 
-    expectation = lines_map.get("期待的你", lines_map.get("择偶标准", "认真相处的人"))
+    expectation = lines_map.get("期待的你", lines_map.get("择偶标准", ""))
+    if not expectation:
+        for field in [mp.ideal_desc, mp.ideal_type_tags, mp.expectation, mp.why_together]:
+            if field:
+                val = field.strip()[:60]
+                if val:
+                    expectation = val
+                    break
+    if not expectation:
+        expectation = "认真相处的人"
 
     return {
         "age": str(age),

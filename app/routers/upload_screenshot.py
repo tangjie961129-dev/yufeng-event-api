@@ -44,10 +44,7 @@ async def upload_screenshot(
     with open(filepath, "wb") as f:
         f.write(content)
 
-    # 复制到公共目录
-    pub_dir = os.path.join(PUBLIC_DIR, date)
-    os.makedirs(pub_dir, exist_ok=True)
-    shutil.copy2(filepath, os.path.join(pub_dir, filename))
+    # 复制到公共目录（先移除旧文件避免权限冲突）    pub_dir = os.path.join(PUBLIC_DIR, date)    os.makedirs(pub_dir, exist_ok=True)    pub_path = os.path.join(pub_dir, filename)    try:        if os.path.exists(pub_path):            os.remove(pub_path)    except:        pass    try:        shutil.copy2(filepath, pub_path)    except PermissionError:        import subprocess        subprocess.run(["sudo", "cp", filepath, pub_path], check=True)        subprocess.run(["sudo", "chown", "ubuntu:ubuntu", pub_path], check=True)
 
     # 更新 today_posts.json
     json_path = os.path.join(today_dir, "today_posts.json")
