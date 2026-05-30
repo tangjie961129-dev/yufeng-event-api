@@ -1,227 +1,164 @@
 """
-屿风会员分层评分服务 v3
-- 适配 member_profiles 26 个实际字段
-- 收入新增 3 万以上档
-- 使用 self_tags/ideal_type_tags/ideal_desc/marriage 等字段做更精准评分
-- 评分函数接受 ORM 对象或 dict
+屿风会员分层评分 v3 — 简化版
+维度：收入(30%) + 城市(30%) + 年龄(20%) + 独居(20%)
 """
 import re
 
 
-WEIGHTS = {
-    "income": 0.25,
-    "completeness": 0.20,
-    "match_potential": 0.25,
-    "responsiveness": 0.15,
-    "long_term_value": 0.15,
-}
-
-
-def parse_income(raw):
-    """收入 → 0-25 分，新增 3 万以上 40 分（唯一超过满点的维度）"""
+def parse_income(raw) -> int:
+    """收入 → 0-100 分"""
     if not raw:
-        return 5
+        return 20
     raw = str(raw).strip()
-    static = {
-        "30000以上": 40, "20000以上": 25, "15000-20000": 22,
-        "10000-15000": 20, "8000-10000": 18, "5000-8000": 12,
-        "3000-5000": 5, "3000以下": 0, "未工作/在读": 0,
+
+    # 新表单下拉值
+    TABLE = {
+        "5万以上": 100,
+        "3w-5w": 85,
+        "1w-3w": 70,
+        "8000-10000": 55,
+        "5000-8000": 35,
+        "3000-5000": 20,
+        "3000以下": 5,
+        "未工作/在读": 0,
+        # 旧值兼容
+        "30000以上": 100,
+        "20000以上": 80,
+        "15000-20000": 75,
+        "10000-15000": 65,
     }
-    if raw in static:
-        return static[raw]
-    # 模糊匹配
+    if raw in TABLE:
+        return TABLE[raw]
+
+    # 模糊匹配数字
     nums = re.findall(r'\d+', raw)
     if nums:
         val = int(nums[0])
-        if val >= 30000: return 40
-        if val >= 20000: return 25
-        if val >= 15000: return 22
-        if val >= 10000: return 20
-        if val >= 8000: return 18
-        if val >= 5000: return 12
-        if val >= 3000: return 5
-        return 0
-    return 5
-
-
-def guess_age(profile):
-    """从 birth_info 或 age 字段猜测年龄"""
-    bi = profile.get("birth_info", "") or ""
-    if bi:
-        years = re.findall(r'(19\d{2}|20\d{2})', str(bi))
-        if years:
-            return 2026 - int(years[0])
-        ages = re.findall(r'(\d+)\s*岁', str(bi))
-        if ages:
-            return int(ages[0])
-    # fallback: 直接 age 字段
-    age = profile.get("age")
-    if age:
-        return int(age) if str(age).isdigit() else None
-    return None
-
-
-def age_score(age):
-    if age is None: return 1
-    if 25 <= age <= 35: return 5
-    if 20 <= age <= 24 or 36 <= age <= 45: return 3
-    return 1
-
-
-def role_score(role_self):
-    role = (role_self or "").strip()
-    if role in ("0", "1"): return 10
-    if any(k in role for k in ("0.5", "偏0", "偏1")):
+        if val >= 50000: return 100
+        if val >= 30000: return 85
+        if val >= 10000: return 65
+        if val >= 5000: return 35
+        if val >= 3000: return 20
         return 5
-    return 0
+    return 20
 
 
-def ideal_role_score(ideal_role):
-    ir = (ideal_role or "").strip()
-    if ir in ("0", "1"): return 5
-    if "0.5" in ir: return 3
-    return 0
-
-
-CITY_SCORE = {
-    "北京": 10, "上海": 10, "广州": 10, "深圳": 10,
-    "杭州": 9, "成都": 9, "重庆": 8,
-    "南京": 8, "西安": 8, "武汉": 8, "长沙": 8,
-    "苏州": 7, "天津": 7, "东莞": 7, "佛山": 7,
-}
-
-
-def city_score(city):
-    if not city: return 2
+def city_score(city: str) -> int:
+    """城市 → 0-100 分"""
+    if not city:
+        return 15
     city = city.strip()
-    if city in CITY_SCORE: return CITY_SCORE[city]
-    for key, score in CITY_SCORE.items():
-        if key in city or city in key: return score
-    return 4
+
+    # 处理级联格式 "省/市/区"
+    parts = re.split(r"[/·\s]", city)
+    # 取市名（例：江苏省/扬州市/邗江区 → 扬州）
+    city_name = ""
+    for p in parts:
+        p = p.strip().replace("市", "")
+        if p and p not in ("北京", "上海", "天津", "重庆"):  # 直辖市直接保留
+            city_name = p
+        elif p in ("北京", "上海"):
+            city_name = p
+    if not city_name:
+        city_name = parts[0].replace("市", "").strip() if parts else city
+
+    SCORE_MAP = {
+        "北京": 100, "上海": 100, "广州": 100, "深圳": 100,
+        "杭州": 90, "成都": 90, "重庆": 80,
+        "南京": 80, "西安": 80, "武汉": 80, "长沙": 80,
+        "苏州": 70, "天津": 70, "东莞": 70, "佛山": 70,
+    }
+
+    if city_name in SCORE_MAP:
+        return SCORE_MAP[city_name]
+    # 模糊匹配
+    for key, score in SCORE_MAP.items():
+        if key in city_name or city_name in key:
+            return score
+    return 30
 
 
-def completeness_score(profile):
-    """
-    资料完整度 0-20 分
-    使用 26 个字段中的核心字段
-    """
-    core = [
-        "nickname", "city", "income", "height", "weight",
-        "role_self", "body_type", "job", "education",
-        "self_tags", "ideal_desc", "dealbreaker",
-        "attitude_live", "out_status",
-    ]
-    filled = sum(1 for f in core if profile.get(f) and str(profile.get(f, "")).strip())
-    
-    # 追加字段加分
-    extras = ["ideal_body_type", "ideal_type_tags", "love_habits", "why_together",
-              "extra_message", "social_info", "single_duration", "marriage", "experience"]
-    extra_filled = sum(1 for f in extras if profile.get(f) and str(profile.get(f, "")).strip())
-    filled += extra_filled * 0.5  # 每个追加字段算 0.5 分
-    
-    # 照片加分
-    photos = profile.get("photos", "") or ""
-    photo_path = profile.get("photo_path", "") or ""
-    if (photos and str(photos).strip("[] ")) or photo_path:
-        filled += 2
-    
-    if filled >= 16: return 20
-    if filled >= 12: return 17
-    if filled >= 8: return 12
-    if filled >= 4: return 6
-    return 0
+def age_score(age_val) -> int:
+    """年龄 → 0-100 分"""
+    if age_val is None:
+        try:
+            age_val = int(age_val)
+        except:
+            return 30
+    age_val = int(age_val)
+    if 25 <= age_val <= 35:
+        return 100
+    if 20 <= age_val <= 24 or 36 <= age_val <= 40:
+        return 70
+    if 18 <= age_val <= 19 or 41 <= age_val <= 45:
+        return 40
+    if age_val >= 46:
+        return 10
+    return 30
 
 
-def long_term_score(profile):
-    """
-    长期价值 0-15 分
-    使用 marriage(形婚考虑), dealbreaker(雷区), ideal_desc(理想描述),
-    why_together(长久因素), attitude_live(脱单态度/同居) 等字段
-    """
-    fields_to_check = [
-        profile.get("ideal_desc", ""),
-        profile.get("why_together", ""),
-        profile.get("attitude_live", ""),
-        profile.get("expectation", ""),
-        profile.get("dealbreaker", ""),
-        profile.get("marriage", ""),
-        profile.get("love_habits", ""),
-    ]
-    combined = " ".join(str(f or "") for f in fields_to_check)
-    
-    long_sigs = ["结婚", "婚姻", "长久", "长期", "稳定", "一辈子",
-                 "相伴", "生活", "一起", "同居", "认真", "真诚",
-                 "关系", "伴侣", "陪伴", "过日"]
-    short_sigs = ["试试", "看看", "随便", "聊天", "交友", "约"]
-    negative = ["骗", "已婚", "有对象"]
-    
-    if any(s in combined for s in negative): return 0
-    if any(s in combined for s in long_sigs): return 15
-    if any(s in combined for s in short_sigs): return 3
-    # 有详细描述但不明确提及长期
-    has_detail = sum(1 for f in fields_to_check if f and len(str(f).strip()) > 15)
-    if has_detail >= 2: return 10
-    if has_detail >= 1: return 8
-    return 5
+def alone_score(attitude_live: str) -> int:
+    """独居 → 0-100 分"""
+    if not attitude_live:
+        return 50  # 未填→中性分，不惩罚
+    al = attitude_live.strip()
+
+    # 新表单下拉值
+    if al in ("租房独居", "已购房独居", "独居"):
+        return 100
+    if al in ("合租",):
+        return 50
+    if al in ("父母同居", "非独居", "与父母同住"):
+        return 20
+
+    # 旧表单文本字段 — 模糊匹配
+    if "独居" in al or "自己住" in al or "一个人住" in al:
+        return 100
+    if "父母" in al or "家人" in al or "家庭" in al:
+        return 20
+    if "同居" in al or "合租" in al:
+        return 50
+    if "独居" not in al and "同居" not in al and "合租" not in al and "父母" not in al:
+        # 有填内容但无法判断居住情况 → 中性
+        return 50
+    return 50
 
 
 def score_member(profile):
     """
     给一个会员打分（接受 dict 或 ORM 对象）
-    profile: dict with member_profiles fields
-    Returns: (level, score, details)
+    Returns: (level, total_score, details)
     """
-    # 如果是 ORM 对象，转 dict
     if not isinstance(profile, dict):
         try:
             profile = {c.key: getattr(profile, c.key) for c in profile.__table__.columns}
         except:
             pass
 
-    details = {}
+    weights = {"income": 0.30, "city": 0.30, "age": 0.20, "alone": 0.20}
 
-    # 1. 收入 (0-100, 3万以上可到160→加权后仍合规)
-    income_raw = profile.get("income", "") or ""
-    income_points = parse_income(income_raw)
-    income_score = income_points * 4  # 3万以上 = 40*4 = 160分，但权重25% = 40分
-    # 但最终总分可能超过100，需要 cap
-    details["income"] = {"score": income_score, "weighted": income_score * WEIGHTS["income"]}
+    # 1. 收入
+    inc_raw = profile.get("income", "") or ""
+    inc = parse_income(inc_raw)
 
-    # 2. 资料完整度 (0-100)
-    comp_score = completeness_score(profile) * 5
-    details["completeness"] = {"score": comp_score, "weighted": comp_score * WEIGHTS["completeness"]}
+    # 2. 城市
+    c_raw = profile.get("city", "") or ""
+    cit = city_score(c_raw)
 
-    # 3. 匹配潜力 (0-100)
-    rv = role_score(profile.get("role_self", ""))
-    iv = ideal_role_score(profile.get("ideal_role", ""))
-    cv = city_score(profile.get("city", ""))
-    av = age_score(guess_age(profile))
-    raw_match = rv + iv + cv + av  # max ~30
-    match_score = (raw_match / 30) * 100
-    details["match_potential"] = {
-        "score": round(match_score, 1),
-        "weighted": match_score * WEIGHTS["match_potential"],
-    }
+    # 3. 年龄
+    age_raw = profile.get("age")
+    if age_raw is None:
+        bi = profile.get("birth_info", "") or ""
+        nums = re.findall(r'\d+', str(bi))
+        age_raw = int(nums[0]) if nums else None
+    ag = age_score(age_raw)
 
-    # 4. 配合度 (0-100)
-    resp = 50
-    photos = profile.get("photos", "") or ""
-    photo_path = profile.get("photo_path", "") or ""
-    if (photos and str(photos).strip("[] ")) or photo_path:
-        resp = 80
-    # 如果有微信/手机号也加分
-    wechat = profile.get("wechat", "") or ""
-    phone = profile.get("phone", "") or ""
-    if wechat and phone:
-        resp = min(resp + 10, 100)
-    details["responsiveness"] = {"score": resp, "weighted": resp * WEIGHTS["responsiveness"]}
+    # 4. 独居
+    al_raw = profile.get("attitude_live", "") or ""
+    al = alone_score(al_raw)
 
-    # 5. 长期价值 (0-100)
-    ltv_raw = long_term_score(profile)
-    ltv_score = (ltv_raw / 15) * 100
-    details["long_term_value"] = {"score": round(ltv_score, 1), "weighted": ltv_score * WEIGHTS["long_term_value"]}
-
-    total = sum(v["weighted"] for v in details.values())
+    total = inc * weights["income"] + cit * weights["city"] + \
+            ag * weights["age"] + al * weights["alone"]
     total = round(total, 1)
 
     if total >= 80:
@@ -232,5 +169,12 @@ def score_member(profile):
         level = "B"
     else:
         level = "C"
+
+    details = {
+        "income": {"raw": inc_raw, "score": inc, "weighted": round(inc * weights["income"], 1)},
+        "city": {"raw": c_raw, "score": cit, "weighted": round(cit * weights["city"], 1)},
+        "age": {"raw": age_raw, "score": ag, "weighted": round(ag * weights["age"], 1)},
+        "alone": {"raw": al_raw, "score": al, "weighted": round(al * weights["alone"], 1)},
+    }
 
     return level, total, details
