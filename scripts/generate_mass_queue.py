@@ -162,7 +162,7 @@ def generate_mass_text(member):
 
     prompt = (
         f"以屿风创始人阿杰的语气，写一段群发推荐文案，用'宝子'开头。\n\n"
-        f"要推荐的会员信息如下：\n"
+        f"要推荐的会员信息如下（注意：role/属性字段仅供你理解背景，绝对不能出现在文案中）：\n"
         f"年龄：{age}岁 | 职业：{job} | 身高：{height} | 学历：{education}\n"
         f"体型：{body_type} | 属性：{role} | 单身时长：{single_duration}\n"
         f"个人特点：{tags}\n"
@@ -183,6 +183,7 @@ def generate_mass_text(member):
         f"6. 结尾自然收束，如'有意向跟我说'\n"
         f"7. 绝对不要出现城市、地名或地域信息\n"
         f"8. 会员都是男性，只能用'他'不用'她'\n"
+        f"9. 文案中绝对不能出现任何属性相关描述，包括但不限于：偏1、偏0、0.5、SIDE、皆可、偏S、纯S、偏0.5等任何形式（包括缩写、代称、谐音）——role字段仅供你理解背景\n"
         f"只输出正文。"
     )
     try:
@@ -207,52 +208,141 @@ def generate_mass_text(member):
 
 
 def generate_images(level_items):
-    """为每个会员生成配图（独立步骤，失败不影响文案）"""
+    """为每个会员生成配图（独立步骤，失败不影响文案）
+    每日清旧图重新生成，6场景随机轮换，30%不露脸身材照
+    """
+    import random, hashlib
+
+    # ===== 1. 清空旧图，确保每天重新生成 =====
+    for old in os.listdir(IMAGE_DIR):
+        old_path = os.path.join(IMAGE_DIR, old)
+        if os.path.isfile(old_path) and old[0] in "SABC":
+            os.remove(old_path)
+            print(f"  🗑️ 已清除旧图: {old}")
+
+    # ===== 2. 6个场景轮换 =====
+    SCENES = [
+        ("gym", "at the gym, doing a light workout, gym equipment in background, tank top or athletic wear"),
+        ("basketball", "on a basketball court, holding a basketball, sportswear, outdoor court, sunny day"),
+        ("running", "on a running track, athleisure wear, after a run, slightly sweaty, fitness vibe"),
+        ("home", "in a cozy living room, sitting on a sofa, natural home setting, casual t-shirt"),
+        ("coffee", "at a coffee shop, holding a cup, casual urban style, streetwear, relaxed vibe"),
+        ("yoga", "stretching in a bright room, fitness wear, peaceful atmosphere, warm sunlight"),
+    ]
+
+    # ===== 3. Avemujica fallback =====
+    AVEMUJICA_BASE = "https://api.avemujica.moe/v1"
+    avemujica_key = ""
+    for k, v in [(line.strip().split("=", 1)) for line in open(env_path) if "=" in line.strip()]:
+        if k == "AVEMUJICA_API_KEY":
+            avemujica_key = v
+
     for item in level_items:
         lv = item["level"]
         m = item["member"]
         img_path = os.path.join(IMAGE_DIR, f"{lv}.png")
-        if os.path.exists(img_path):
-            print(f"  🖼️ {lv} 配图已存在，跳过")
-            item["image"] = img_path
-            continue
+
+        # 确定性场景分配（同一会员每次生成同场景）
+        seed_str = m.get("name", "") + m.get("job", "")
+        scene_idx = int(hashlib.md5(seed_str.encode()).hexdigest(), 16) % len(SCENES)
+        scene_name, scene_desc = SCENES[scene_idx]
+
+        # 30%不露脸身材照
+        no_face = int(hashlib.md5((seed_str + "face").encode()).hexdigest(), 16) % 100 < 30
+
+        # 体型判断
+        body = m.get("body_type", "")
+        is_athletic = any(kw in body for kw in ["肌肉", "健身", "运动", "偏壮", "运动型"])
+
+        top_desc = "athletic fit, shirtless or tank top showing chest and abs naturally" if is_athletic else "medium shot from chest up, wearing casual t-shirt or sweater"
+
+        face_desc = ""
+        if no_face:
+            face_desc = ", 拍摄不露脸, only body visible, back view or side view, face not in frame"
+        else:
+            face_desc = ", handsome young Chinese man, clear face visible, natural smile, approachable expression"
 
         prompt_text = (
-            f"A warm, tasteful portrait of a handsome East Asian man, "
-            f"in smart casual wear. Soft lighting, cream background. "
-            f"Gentle smile, approachable expression. "
-            f"Photorealistic, high-end portrait photography. "
-            f"No text, no logos."
+            f"手机随手拍生活质感照片, {face_desc}, "
+            f"{top_desc}, {scene_desc}, "
+            f"warm natural lighting, photorealistic, "
+            f"手机随手拍画质, 低清压缩感, 不修图不锐化, 生活化照片, "
+            f"no studio lighting, no fashion shoot style, no text, no logos"
         )
-        for attempt in range(2):
-            try:
-                resp = requests.post(
-                    f"{TON_API_BASE}/v1/images/generations",
-                    headers={"Authorization": f"Bearer {TON_API_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "model": "gpt-image-2",
-                        "prompt": prompt_text,
-                        "n": 1,
-                        "size": "1024x1024",
-                        "response_format": "b64_json",
-                    },
-                    timeout=90
-                )
-                data = resp.json()
-                b64 = data.get("data", [{}])[0].get("b64_json", "")
-                if b64:
-                    with open(img_path, "wb") as f:
-                        f.write(base64.b64decode(b64))
-                    print(f"  🖼️ {lv} 配图成功")
-                    item["image"] = img_path
-                    break
-                else:
-                    print(f"  ⚠️ {lv} 配图无b64 (attempt {attempt+1})")
-            except Exception as e:
-                print(f"  ⚠️ {lv} 配图失败 (attempt {attempt+1}): {type(e).__name__}")
-            time.sleep(2)
-        else:
-            print(f"  ⚠️ {lv} 配图跳过")
+
+        # ===== 双通道 API 生成 =====
+        api_endpoints = [
+            {"name": "Ton", "base": TON_API_BASE, "key": TON_API_KEY},
+            {"name": "Avemujica", "base": AVEMUJICA_BASE, "key": avemujica_key},
+        ]
+
+        generated = False
+        for ep in api_endpoints:
+            name, base, key = ep["name"], ep["base"], ep["key"]
+            if not key:
+                continue
+            for attempt in range(2):
+                try:
+                    api_url = base.rstrip("/")
+                    if not api_url.endswith("/v1"):
+                        api_url += "/v1"
+                    resp = requests.post(
+                        f"{api_url}/images/generations",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json={
+                            "model": "gpt-image-2",
+                            "prompt": prompt_text,
+                            "n": 1,
+                            "size": "1024x1024",
+                            "response_format": "b64_json",
+                        },
+                        timeout=120
+                    )
+                    data = resp.json()
+                    b64 = data.get("data", [{}])[0].get("b64_json", "")
+                    if b64:
+                        raw_bytes = base64.b64decode(b64)
+
+                        # 缩放+转JPEG压缩
+                        from PIL import Image as PILImage
+                        import io
+                        buf = io.BytesIO(raw_bytes)
+                        img = PILImage.open(buf).convert("RGB")
+                        w, h = img.size
+                        if w > 600:
+                            ratio = 600.0 / w
+                            img = img.resize((600, int(h * ratio)))
+
+                        # 有脸 → 脸部打码
+                        if not no_face:
+                            fx, fy = int(w * 0.30), int(h * 0.08)
+                            fw2, fh2 = int(w * 0.40), int(h * 0.30)
+                            face_region = img.crop((fx, fy, fx + fw2, fy + fh2))
+                            rw2, rh2 = face_region.size
+                            small = face_region.resize((max(rw2 // 28, 10), max(rh2 // 28, 10)), PILImage.NEAREST)
+                            img.paste(small.resize((rw2, rh2), PILImage.NEAREST), (fx, fy))
+
+                        out_buf = io.BytesIO()
+                        img.save(out_buf, format="JPEG", quality=75)
+                        with open(img_path, "wb") as f:
+                            f.write(out_buf.getvalue())
+                        print(f"  🖼️ {lv} [{name}] {scene_name} {'🔒不露脸' if no_face else '👤露脸'} "
+                              f"{img_path} {os.path.getsize(img_path)//1024}KB")
+                        item["image"] = img_path
+                        generated = True
+                        break
+                    else:
+                        print(f"  ⚠️ {lv} [{name}] 无b64 (attempt {attempt+1})")
+                except KeyError as e:
+                    print(f"  ⚠️ {lv} [{name}] JSON结构异常: {e} (attempt {attempt+1})")
+                except Exception as e:
+                    print(f"  ⚠️ {lv} [{name}] 失败: {type(e).__name__} (attempt {attempt+1})")
+                time.sleep(2)
+            if generated:
+                break
+
+        if not generated:
+            print(f"  ⚠️ {lv} 配图跳过（所有通道失败）")
 
 
 def save_queue(level_items, today_str):
@@ -263,6 +353,22 @@ def save_queue(level_items, today_str):
         "status": "pending",
         "sender": "",
     }
+    # 如果同一天的队列已确认过，保留确认状态（避免重跑覆盖用户确认）
+    if os.path.exists(QUEUE_FILE):
+        try:
+            with open(QUEUE_FILE, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+            if existing.get("date") == today_str and existing.get("status") == "confirmed":
+                queue["status"] = "confirmed"
+                queue["sender"] = existing.get("sender", "TangJieSiRenHao")
+                for new_item in queue["items"]:
+                    for old_item in existing.get("items", []):
+                        if new_item["level"] == old_item["level"] and old_item.get("confirmed"):
+                            new_item["confirmed"] = True
+                            break
+                print(f"  🔄 保留已有确认状态")
+        except:
+            pass
     with open(QUEUE_FILE, "w", encoding="utf-8") as f:
         json.dump(queue, f, ensure_ascii=False, indent=2)
     print(f"  💾 待群发列表已保存: {QUEUE_FILE}")

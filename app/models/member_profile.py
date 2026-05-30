@@ -29,6 +29,7 @@ class MemberProfile(Base):
     # ===== 第二步：外貌 =====
     height = Column(Integer, nullable=True)
     weight = Column(Integer, nullable=True)
+    age = Column(Integer, nullable=True, comment="从birth_info解析的年龄")
     body_type = Column(String(30), default="")
     ideal_body_type = Column(String(100), default="")
 

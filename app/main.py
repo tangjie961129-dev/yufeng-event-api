@@ -9,7 +9,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
-from app.routers import auth, events, registration, admin_auth, admin_dashboard, admin_users, admin_business, admin_ui_config, admin_permission_distribution, public_ui_config, love, wx_kf, wecom_oauth, admin_cms, admin_member_tags, admin_ops, love_courses, admin_courses, quiz, admin_quiz, admin_rules, invite_router, admin_invite, partner_router, admin_partners_standalone, register_form, admin_stats, upload_screenshot, approve, gbrain_api
+from app.routers import auth, events, registration, admin_auth, admin_dashboard, admin_users, admin_business, admin_ui_config, admin_permission_distribution, public_ui_config, love, wx_kf, wecom_oauth, admin_cms, admin_member_tags, admin_ops, love_courses, admin_courses, quiz, admin_quiz, admin_rules, invite_router, admin_invite, partner_router, admin_partners_standalone, register_form, admin_stats, upload_screenshot, approve, gbrain_api, admin_members_page
 from app.routers.cooperation import user_router as cooperation_user_router, admin_router as admin_cooperation_router
 from app.routers.admin_auth import ensure_default_admin
 from app.routers.admin_permission_distribution import ensure_default_role_permissions
@@ -55,6 +55,7 @@ app.include_router(admin_courses.router)
 app.include_router(admin_quiz.router)
 app.include_router(admin_cms.router)
 app.include_router(admin_member_tags.router)
+app.include_router(admin_members_page.router)
 app.include_router(admin_ops.router)
 app.include_router(cooperation_user_router)
 app.include_router(admin_cooperation_router)

@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.registration_link import RegistrationLink
 from app.models.member_profile import MemberProfile
+from app.models.huxuan_profile import HuxuanProfile
 from app.services.wecom_deep_reply import generate_and_send_deep_reply
 from app.services.wecom_reply import (
     _build_daily_preview_reply,
@@ -177,11 +178,19 @@ def _parse_message_xml(xml_text: str) -> dict:
     return result
 
 
+def _strip_remark_suffix(name: str) -> str:
+    """去除备注后缀｜城市｜属性｜年龄｜等级，只保留昵称"""
+    idx = name.find("｜")
+    if idx > 0:
+        return name[:idx].strip()
+    return name.strip()
+
+
 def _extract_customer_name(text: str) -> str | None:
-    """从「给清风徐来发链接」中提取客户名"""
+    """从「给清风徐来发链接」中提取客户名（自动去除备注后缀）"""
     m = re.search(r"给(.+?)发(?:个|个的|)?(?:填表)?链接", text)
     if m:
-        return m.group(1).strip()
+        return _strip_remark_suffix(m.group(1))
     return None
 
 
@@ -243,84 +252,62 @@ def _query_member_sync(db: Session, content: str) -> str | None:
 
 
 def _recommend_match_sync(db: Session, content: str, employee_userid: str) -> str:
-    """同步推荐匹配，从总会员库中精选推荐（不限员工名下）"""
-    from app.models.user import User
-    from sqlalchemy import or_
+    """同步推荐匹配 — 使用 matching_service 的6维度评分引擎
+    - 说「推荐匹配 王五」→ 以王五为基准匹配
+    - 说「推荐匹配」→ 显示提示
+    """
+    from app.services.matching_service import find_matches
+    import re
 
-    # 1. 从总库（users + member_profiles）提取有完整资料的会员
-    #    同时去重：同一个用户如果在两个表都有记录，取 member_profiles 优先
-    users_with_data = db.query(User).filter(
-        User.nickname != "",
-        User.nickname.isnot(None),
-        or_(
-            User.role_self != "",
-            User.role.isnot(None),
-            User.expectation != "",
-        ),
-    ).order_by(User.updated_at.desc()).limit(30).all()
+    # 1. 尝试从内容中提取人名
+    # 去掉触发关键词，剩下的部分作为人名
+    cleaned = content.strip()
+    for kw in ["推荐匹配", "给", "推荐", "匹配", "介绍", " "]:
+        cleaned = cleaned.replace(kw, " ")
+    cleaned = cleaned.strip()
 
-    # 收集已出现过的 nickname（去重）
-    seen_nicknames = set()
-    for u in users_with_data:
-        if u.nickname:
-            seen_nicknames.add(u.nickname.strip())
+    ref_profile = None
+    if cleaned:
+        ref_profile = db.query(MemberProfile).filter(
+            MemberProfile.nickname.ilike(f"%{cleaned}%"),
+        ).first()
 
-    profiles = db.query(MemberProfile).filter(
-        MemberProfile.nickname != "",
-        MemberProfile.nickname.isnot(None),
-        MemberProfile.role_self != "",
-    ).order_by(MemberProfile.updated_at.desc()).limit(30).all()
+    if ref_profile:
+        matches = find_matches(db, ref_profile, limit=5)
+        if not matches:
+            return (
+                "━━━ 💞 推荐匹配 ━━━\n\n"
+                f"以「{ref_profile.nickname}」为基准，暂无匹配候选人。\n\n"
+                "💡 下一步：换个会员试试"
+            )
 
-    # 2. 合并并去重
-    combined = []
-    seen = set()
-    for u in users_with_data:
-        name = (u.nickname or "").strip()
-        if name and name not in seen:
-            seen.add(name)
-            combined.append(u)
+        lines = [
+            f"━━━ 💞 以{ref_profile.nickname}为基准匹配 ━━━",
+            f"📋 {ref_profile.city or '?'} · {ref_profile.age or '?'}岁 · {ref_profile.role_self or '?'}",
+            "",
+        ]
+        for i, m in enumerate(matches, 1):
+            p = m["profile"]
+            s = m["scores"]
+            name = getattr(p, "nickname", getattr(p, "昵称", "?"))
+            city = getattr(p, "city", getattr(p, "城市", ""))
+            lines.append(f"{i}. {name} | 💯 {s['total']}%")
+            lines.append(f"   {city} · 角色{s['role']} · 年龄{s['age']} · 体型{s['body']}")
+            bonus = s.get("city_bonus", 0)
+            if bonus:
+                lines.append(f"   {'📍 同城 ✓' if bonus >= 20 else '📍 同省'}")
+            lines.append("")
+        lines.append("💡 说「查XX的档案」查看详细信息")
+        return "\n".join(lines)
 
-    for p in profiles:
-        name = (p.nickname or "").strip()
-        if name and name not in seen:
-            seen.add(name)
-            combined.append(p)
-
-    if not combined:
-        return (
-            "━━━ 💞 推荐匹配 ━━━\n\n"
-            "暂无已填表会员可用于匹配。请先生成填表链接让客户登记资料。\n\n"
-            "💡 下一步：说「给XX发填表链接」"
-        )
-
-    # 3. 截取前 3-5 个推荐（避免太长）
-    MAX_SHOW = 5
-        # 记录推荐匹配时间
-    try:
-        from datetime import datetime, timezone
-        for entity in combined:
-            if hasattr(entity, 'last_contact_at'):
-                entity.last_contact_at = datetime.now(timezone.utc)
-        db.flush()
-    except:
-        pass
-
-    featured = combined[:MAX_SHOW]
-
-    # 4. 构建匹配推荐文本
-    from app.services.wecom_reply import _build_member_info_reply
-    lines = ["━━━ 💞 推荐匹配 ━━━", ""]
-    for entity in featured:
-        card = _build_member_info_reply(entity)
-        # 去掉标题行和提示行
-        card = card.replace("━━━ 📋 会员档案 ━━━\n\n", "").replace("\n💡 下一步：说「推荐匹配」获取匹配建议", "").rstrip()
-        lines.append(card)
-        lines.append("")
-
-    total_count = len(combined)
-    lines.append(f"💡 共 {total_count} 位匹配候选人，可继续推荐。")
-    lines.append("💡 说「查XX的档案」查看详细信息，或输入客户需求继续筛选。")
-    return "\n".join(lines)
+    # 2. 没有指定人名 → 引导
+    return (
+        "━━━ 💞 推荐匹配 ━━━\n\n"
+        "请指定要匹配的基准会员，例如：\n"
+        "· 说「推荐匹配 张三」\n"
+        "· 或先给客户发填表链接，填表后系统自动推送匹配\n\n"
+        "💡 说「给XX发填表链接」让客户先登记资料"
+    )
 
 
 # ─── 回复格式统一 ────────────────────────────────────────────
@@ -611,7 +598,7 @@ async def wecom_callback_event(
             )
 
     # --- 层3：发链接指令（先核实客户存在） ---
-    elif any(kw in content for kw in ["发链接", "发登记链接", "登记链接", "填表链接"]):
+    elif any(kw in content for kw in ["发链接", "发登记链接", "登记链接", "填表链接", "重新填表", "更新资料", "更新链接"]):
         customer_name = _extract_customer_name(content)
 
         if customer_name and from_user:
@@ -648,11 +635,13 @@ async def wecom_callback_event(
 
                 link_url = "https://yufeng.team/api/wecom/tag/register-form?" + "token=" + token_str
 
+                is_update = any(kw in content for kw in ["重新填表", "更新资料", "更新链接"])
+                _hint = "【更新资料】已有资料会被新填写的内容覆盖。请提醒客户认真填写。" if is_update else "他填表后会自动打标签。"
                 reply_text = (
                     "━━━ 🔗 发登记链接 ━━━\n\n"
                     f"✅ 已为「{customer_name}」生成专属登记链接：\n"
                     f"{link_url}\n\n"
-                    f"把链接发给 {customer_name}，他填表后会自动打标签。\n\n"
+                    f"把链接发给 {customer_name}，{_hint}\n\n"
                     "💡 下一步：客户填表后说「查XX的档案」查看完整信息"
                 )
         else:

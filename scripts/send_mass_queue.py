@@ -116,8 +116,8 @@ def upload_image_to_wecom(image_path):
         return None
 
 
-def send_text(ext_ids, text, sender):
-    """纯文本群发"""
+def send_text_with_image(ext_ids, text, media_id, sender):
+    """一次群发：文案（text）+ 配图（image attachment），只扣一次额度"""
     if not ext_ids:
         return True
     token = get_token()
@@ -129,8 +129,11 @@ def send_text(ext_ids, text, sender):
         batch = ext_ids[i:i+batch_size]
         payload = {
             "chat_type": "single", "external_userid": batch, "sender": sender,
+            "msgtype": "text",
             "text": {"content": text},
         }
+        if media_id:
+            payload["attachments"] = [{"msgtype": "image", "image": {"media_id": media_id}}]
         try:
             req = urllib.request.Request(
                 f"{API_BASE}/cgi-bin/externalcontact/add_msg_template?access_token={token}",
@@ -139,47 +142,12 @@ def send_text(ext_ids, text, sender):
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
             if data.get("errcode") == 0:
-                print(f"  ✅ 纯文本群发 {len(batch)} 人, msgid={data.get('msgid','')}")
+                print(f"  ✅ 群发 {len(batch)} 人 (文案+配图), msgid={data.get('msgid','')}")
             else:
-                print(f"  ❌ 纯文本群发失败: {data}", file=sys.stderr)
+                print(f"  ❌ 群发失败: {data}", file=sys.stderr)
                 success = False
         except Exception as e:
-            print(f"  ❌ 纯文本群发异常: {e}", file=sys.stderr)
-            success = False
-        time.sleep(1)
-    return success
-
-
-def send_image(ext_ids, media_id, sender):
-    """单独群发图片消息"""
-    if not ext_ids or not media_id:
-        return True
-    token = get_token()
-    if not token:
-        return False
-    batch_size = 100
-    success = True
-    for i in range(0, len(ext_ids), batch_size):
-        batch = ext_ids[i:i+batch_size]
-        payload = {
-            "chat_type": "single", "external_userid": batch, "sender": sender,
-            "msgtype": "image",
-            "image": {"media_id": media_id},
-        }
-        try:
-            req = urllib.request.Request(
-                f"{API_BASE}/cgi-bin/externalcontact/add_msg_template?access_token={token}",
-                data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode())
-            if data.get("errcode") == 0:
-                print(f"  ✅ 图片群发 {len(batch)} 人, msgid={data.get('msgid','')}")
-            else:
-                print(f"  ❌ 图片群发失败: {data}", file=sys.stderr)
-                success = False
-        except Exception as e:
-            print(f"  ❌ 图片群发异常: {e}", file=sys.stderr)
+            print(f"  ❌ 群发异常: {e}", file=sys.stderr)
             success = False
         time.sleep(1)
     return success
@@ -238,28 +206,13 @@ def main():
             img_path = item.get("image", "")
             has_img = img_path and os.path.exists(img_path)
 
+            media_id = None
             if has_img:
                 print(f"    📤 上传配图...")
                 media_id = upload_image_to_wecom(img_path)
-                # 先发文字
-                ok_text = send_text(ext_ids, text, sender)
-                if ok_text:
-                    total_sent += len(ext_ids)
-                    print(f"  ✅ {lv}级 文字完成")
-                else:
-                    print(f"  ❌ {lv}级 文字失败")
-                # 再发图片
-                if media_id:
-                    ok_img = send_image(ext_ids, media_id, sender)
-                    if ok_img:
-                        print(f"  ✅ {lv}级 配图完成")
-                    else:
-                        print(f"  ❌ {lv}级 配图失败")
-                else:
-                    print(f"  ⚠️ {lv}级 配图上传失败，跳过")
-                ok = ok_text  # 用于外部计数
-            else:
-                ok = send_text(ext_ids, text, sender)
+
+            # 一次群发：文案+配图（attachments），扣一次额度
+            ok = send_text_with_image(ext_ids, text, media_id, sender)
 
             if ok:
                 sent_count = len(ext_ids)

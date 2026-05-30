@@ -184,26 +184,44 @@ async def find_external_userid(
     """在员工的外部联系人列表中，按名字查找客户的 external_userid"""
     token = await _get_access_token()
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{WECOM_API_BASE}/cgi-bin/externalcontact/batch/get_by_user",
-            params={"access_token": token},
-            json={
+    all_customers = []
+    cursor = ""
+
+    while True:
+        async with httpx.AsyncClient() as client:
+            body = {
                 "userid_list": [employee_userid],
                 "limit": 100,
-            },
-            timeout=10,
-        )
-        data = resp.json()
-        if data.get("errcode") != 0:
-            raise RuntimeError(f"获取客户列表失败: {data}")
+            }
+            if cursor:
+                body["cursor"] = cursor
 
-    customer_list = data.get("external_contact_list", [])
-    for item in customer_list:
+            resp = await client.post(
+                f"{WECOM_API_BASE}/cgi-bin/externalcontact/batch/get_by_user",
+                params={"access_token": token},
+                json=body,
+                timeout=10,
+            )
+            data = resp.json()
+            if data.get("errcode") != 0:
+                raise RuntimeError(f"获取客户列表失败: {data}")
+
+        batch = data.get("external_contact_list", [])
+        all_customers.extend(batch)
+
+        next_cursor = data.get("next_cursor", "")
+        if not next_cursor:
+            break
+        cursor = next_cursor
+
+    for item in all_customers:
         contact = item.get("external_contact") or {}
+        follow_info = item.get("follow_info") or {}
         name = (contact.get("name") or "").strip()
+        remark = (follow_info.get("remark") or "").strip()
         ext_id = contact.get("external_userid")
-        if ext_id and customer_name in name:
+        # 同时匹配微信昵称和员工备注名
+        if ext_id and (customer_name in name or customer_name in remark):
             return ext_id
 
     return None

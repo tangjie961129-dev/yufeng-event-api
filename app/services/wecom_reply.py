@@ -7,6 +7,7 @@ import json
 from datetime import date
 
 from app.models.member_profile import MemberProfile
+from app.models.huxuan_profile import HuxuanProfile
 
 
 # ─── XML 回复构建 ─────────────────────────────────────────────
@@ -319,7 +320,46 @@ def _get_val(obj, *attrs, default=""):
             return str(val)
     return default
 
+
+def _build_huxuan_info_reply(entity) -> str:
+    """HuxuanProfile 兼容版 — 使用中文列名"""
+    def _h(val):
+        return str(val or "")
+    lines = ["━━━ 📋 会员档案 ━━━", ""]
+    nickname = _h(getattr(entity, "昵称", ""))
+    role_self = _h(getattr(entity, "属性", ""))
+    age = _h(getattr(entity, "年龄", ""))
+    city = _h(getattr(entity, "城市", ""))
+    education = _h(getattr(entity, "学历", ""))
+    job = _h(getattr(entity, "职业", ""))
+    height = _h(getattr(entity, "身高", ""))
+    weight = _h(getattr(entity, "体重", ""))
+    ideal_desc = _h(getattr(entity, "理想型描述", ""))
+    personal = _h(getattr(entity, "个人特点", ""))
+    out_status = _h(getattr(entity, "出柜对象", ""))
+    lines.append(f"昵称：{nickname}")
+    lines.append(f"属性：{role_self}")
+    lines.append(f"年龄：{age}")
+    lines.append(f"家乡：")
+    lines.append(f"现居城市：{city}")
+    lines.append(f"学历：{education}")
+    lines.append(f"职业：{job}")
+    lines.append(f"年薪：")
+    lines.append(f"身高：{height}")
+    lines.append(f"体重：{weight}")
+    lines.append(f"个人情感情况：{personal}")
+    lines.append(f"出柜情况：{out_status}")
+    lines.append(f"择偶标准：{ideal_desc}")
+    lines.append("")
+    lines.append("💡 下一步：说「推荐匹配」获取匹配建议")
+    return "\n".join(lines)
+
+
 def _build_member_info_reply(entity) -> str:
+    # HuxuanProfile 兼容 — 属性是中文名
+    if hasattr(entity, "昵称"):
+        return _build_huxuan_info_reply(entity)
+
     """根据 MemberProfile 或 User 对象构建会员档案回复（模板格式）"""
     lines = ["━━━ 📋 会员档案 ━━━", ""]
 

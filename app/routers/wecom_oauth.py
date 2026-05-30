@@ -451,12 +451,12 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3csvg xmlns='ht
     <div class="step-content" data-step="1">
       <div class="sec">关于你</div>
       <div class="fld req"><label>微信昵称</label><input id="f1" placeholder="你希望我们怎么称呼你？"></div>
-      <div class="fld req"><label>所在城市</label><input id="f2" placeholder="如：广州、深圳"></div>
+      <div class="f2"><div class="fld req"><label>常驻省份</label><select id="f2_prov" onchange="updateCity(this,'f2')"><option value="">请选择</option><option value="北京">北京</option><option value="上海">上海</option><option value="广州">广州</option><option value="深圳">深圳</option><option value="天津">天津</option><option value="重庆">重庆</option><option value="广东">广东</option><option value="浙江">浙江</option><option value="江苏">江苏</option><option value="山东">山东</option><option value="福建">福建</option><option value="四川">四川</option><option value="湖北">湖北</option><option value="湖南">湖南</option><option value="河南">河南</option><option value="河北">河北</option><option value="安徽">安徽</option><option value="辽宁">辽宁</option><option value="江西">江西</option><option value="陕西">陕西</option><option value="广西">广西</option><option value="云南">云南</option><option value="贵州">贵州</option><option value="山西">山西</option><option value="吉林">吉林</option><option value="黑龙江">黑龙江</option><option value="甘肃">甘肃</option><option value="海南">海南</option><option value="内蒙古">内蒙古</option><option value="新疆">新疆</option><option value="宁夏">宁夏</option><option value="青海">青海</option><option value="西藏">西藏</option><option value="港澳台">港澳台</option><option value="海外">海外</option></select></div><div class="fld req"><label>常驻城市</label><select id="f2"><option value="">请先选择省份</option></select></div></div>
       <div class="fld req"><label>微信号</label><input id="f2c" placeholder="方便红娘联系你"></div>
       <div class="fld req"><label>手机号</label><input id="f2d" type="tel" placeholder="方便红娘紧急联系"></div>
-      <div class="fld req"><label>家乡</label><input id="f2b" placeholder="如：湖南长沙、四川成都"></div>
-      <div class="fld req"><label>出生年份</label><input id="f3" placeholder="如：1998 或 27岁"></div>
-      <div class="fld req"><label>月收入范围</label><select id="f4"><option value="">请选择</option><option value="5k以下">5k以下</option><option value="5k-1w">5k-1w</option><option value="1w-2w">1w-2w</option><option value="2w以上">2w以上</option><option value="保密">保密</option></select></div>
+      <div class="f2"><div class="fld req"><label>家乡省份</label><select id="f2b_prov" onchange="updateCity(this,'f2b')"><option value="">请选择</option><option value="北京">北京</option><option value="上海">上海</option><option value="广州">广州</option><option value="深圳">深圳</option><option value="天津">天津</option><option value="重庆">重庆</option><option value="广东">广东</option><option value="浙江">浙江</option><option value="江苏">江苏</option><option value="山东">山东</option><option value="福建">福建</option><option value="四川">四川</option><option value="湖北">湖北</option><option value="湖南">湖南</option><option value="河南">河南</option><option value="河北">河北</option><option value="安徽">安徽</option><option value="辽宁">辽宁</option><option value="江西">江西</option><option value="陕西">陕西</option><option value="广西">广西</option><option value="云南">云南</option><option value="贵州">贵州</option><option value="山西">山西</option><option value="吉林">吉林</option><option value="黑龙江">黑龙江</option><option value="甘肃">甘肃</option><option value="海南">海南</option><option value="内蒙古">内蒙古</option><option value="新疆">新疆</option><option value="宁夏">宁夏</option><option value="青海">青海</option><option value="西藏">西藏</option><option value="港澳台">港澳台</option><option value="海外">海外</option></select></div><div class="fld req"><label>家乡城市</label><select id="f2b"><option value="">请先选择省份</option></select></div></div>
+      <div class="fld req"><label>年龄</label><select id="f3"><option value="">请选择年龄</option><option value="18">18岁</option><option value="19">19岁</option><option value="20">20岁</option><option value="21">21岁</option><option value="22">22岁</option><option value="23">23岁</option><option value="24">24岁</option><option value="25">25岁</option><option value="26">26岁</option><option value="27">27岁</option><option value="28">28岁</option><option value="29">29岁</option><option value="30">30岁</option><option value="31">31岁</option><option value="32">32岁</option><option value="33">33岁</option><option value="34">34岁</option><option value="35">35岁</option><option value="36">36岁</option><option value="37">37岁</option><option value="38">38岁</option><option value="39">39岁</option><option value="40">40岁</option><option value="41">41岁</option><option value="42">42岁</option><option value="43">43岁</option><option value="44">44岁</option><option value="45">45岁</option><option value="46">46岁</option><option value="47">47岁</option><option value="48">48岁</option><option value="49">49岁</option><option value="50">50岁</option><option value="51">51岁</option><option value="52">52岁</option><option value="53">53岁</option><option value="54">54岁</option><option value="55">55岁</option><option value="56">56岁</option><option value="57">57岁</option><option value="58">58岁</option><option value="59">59岁</option><option value="60">60岁</option></select></div>
+      <div class="fld req"><label>月收入范围</label><select id="f4"><option value="">请选择</option><option value="5k以下">5k以下</option><option value="5k-1w">5k-1w</option><option value="1w-2w">1w-2w</option><option value="2w以上">2w以上</option><option value="5万以上">5万以上</option></select></div>
       <div class="fld req"><label>行业</label><input id="f5" placeholder="如：互联网、金融、教育…"></div>
       <div class="fld req"><label>最高学历</label><select id="f6"><option value="">请选择</option><option value="高中及以下">高中及以下</option><option value="大专">大专</option><option value="本科">本科</option><option value="硕士">硕士</option><option value="博士及以上">博士及以上</option></select></div>
       <div class="btn-nav"><button type="button" class="btn" onclick="goStep(2)">下一步</button></div>
@@ -465,9 +465,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3csvg xmlns='ht
     <!-- Step 2: 外貌 -->
     <div class="step-content h" data-step="2">
       <div class="sec">外貌与体型</div>
-      <div class="fld req"><label>身高（cm）/ 体重（kg）</label><input id="f7" placeholder="格式：175/70"></div>
-      <div class="fld req"><label>你的体型是？</label><select id="f8"><option value="">请选择</option><option value="瘦弱">瘦弱</option><option value="匀称">匀称</option><option value="肌肉">肌肉</option><option value="丰满">丰满</option><option value="微胖">微胖</option><option value="其他">其他</option></select></div>
-      <div class="fld req"><label>希望对方体型？</label><input id="f9" placeholder="如：匀称+肌肉，或不限"></div>
+      <div class="f2"><div class="fld req"><label>身高（cm）</label><select id="f7_h"><option value="">请选择</option><option value="150">150cm</option><option value="151">151cm</option><option value="152">152cm</option><option value="153">153cm</option><option value="154">154cm</option><option value="155">155cm</option><option value="156">156cm</option><option value="157">157cm</option><option value="158">158cm</option><option value="159">159cm</option><option value="160">160cm</option><option value="161">161cm</option><option value="162">162cm</option><option value="163">163cm</option><option value="164">164cm</option><option value="165">165cm</option><option value="166">166cm</option><option value="167">167cm</option><option value="168">168cm</option><option value="169">169cm</option><option value="170">170cm</option><option value="171">171cm</option><option value="172">172cm</option><option value="173">173cm</option><option value="174">174cm</option><option value="175">175cm</option><option value="176">176cm</option><option value="177">177cm</option><option value="178">178cm</option><option value="179">179cm</option><option value="180">180cm</option><option value="181">181cm</option><option value="182">182cm</option><option value="183">183cm</option><option value="184">184cm</option><option value="185">185cm</option><option value="186">186cm</option><option value="187">187cm</option><option value="188">188cm</option><option value="189">189cm</option><option value="190">190cm</option><option value="191">191cm</option><option value="192">192cm</option><option value="193">193cm</option><option value="194">194cm</option><option value="195">195cm</option><option value="196">196cm</option><option value="197">197cm</option><option value="198">198cm</option><option value="199">199cm</option><option value="200">200cm</option></select></div><div class="fld req"><label>体重（kg）</label><select id="f7_w"><option value="">请选择</option><option value="40">40kg</option><option value="41">41kg</option><option value="42">42kg</option><option value="43">43kg</option><option value="44">44kg</option><option value="45">45kg</option><option value="46">46kg</option><option value="47">47kg</option><option value="48">48kg</option><option value="49">49kg</option><option value="50">50kg</option><option value="51">51kg</option><option value="52">52kg</option><option value="53">53kg</option><option value="54">54kg</option><option value="55">55kg</option><option value="56">56kg</option><option value="57">57kg</option><option value="58">58kg</option><option value="59">59kg</option><option value="60">60kg</option><option value="61">61kg</option><option value="62">62kg</option><option value="63">63kg</option><option value="64">64kg</option><option value="65">65kg</option><option value="66">66kg</option><option value="67">67kg</option><option value="68">68kg</option><option value="69">69kg</option><option value="70">70kg</option><option value="71">71kg</option><option value="72">72kg</option><option value="73">73kg</option><option value="74">74kg</option><option value="75">75kg</option><option value="76">76kg</option><option value="77">77kg</option><option value="78">78kg</option><option value="79">79kg</option><option value="80">80kg</option><option value="81">81kg</option><option value="82">82kg</option><option value="83">83kg</option><option value="84">84kg</option><option value="85">85kg</option><option value="86">86kg</option><option value="87">87kg</option><option value="88">88kg</option><option value="89">89kg</option><option value="90">90kg</option><option value="91">91kg</option><option value="92">92kg</option><option value="93">93kg</option><option value="94">94kg</option><option value="95">95kg</option><option value="96">96kg</option><option value="97">97kg</option><option value="98">98kg</option><option value="99">99kg</option><option value="100">100kg</option></select></div></div>
+      <div class="fld req"><label>你的体型是？</label><select id="f8"><option value="">请选择</option><option value="偏瘦">偏瘦</option><option value="匀称">匀称</option><option value="薄肌">薄肌</option><option value="肌肉">肌肉</option><option value="脂包肌">脂包肌</option><option value="熊">熊</option><option value="猪">猪</option></select></div>
+      <div class="fld req"><label>希望对方体型？</label><select id="f9"><option value="">不限</option><option value="偏瘦">偏瘦</option><option value="匀称">匀称</option><option value="薄肌">薄肌</option><option value="肌肉">肌肉</option><option value="脂包肌">脂包肌</option><option value="熊">熊</option><option value="猪">猪</option></select></div>
       <div class="btn-nav"><button type="button" class="btn btn-sec" onclick="goStep(1)">上一步</button><button type="button" class="btn" onclick="goStep(3)">下一步</button></div>
     </div>
 
@@ -484,7 +484,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3csvg xmlns='ht
       <div class="fld req"><label>单身多久了？</label><select id="f12"><option value="">请选择</option><option value="半年">半年</option><option value="1年">1年</option><option value="3年以上">3年以上</option><option value="从未恋爱过">从未恋爱过</option></select></div>
       <div class="fld req"><label>目前已出柜的对象</label><select id="f13"><option value="">请选择</option><option value="父母">父母</option><option value="部分家人">部分家人</option><option value="朋友">朋友</option><option value="同事">同事</option><option value="无人">无人</option></select></div>
       <div class="fld req"><label>是否考虑形婚？</label><select id="f14"><option value="">请选择</option><option value="是">是</option><option value="否">否</option><option value="不确定">不确定</option></select></div>
-      <div class="fld req"><label>对脱单的态度？准备好同居了吗？</label><textarea id="f15" placeholder="例如：随缘但还没准备好同居；积极寻找可以接受同居等"></textarea></div>
+      <div class="fld req"><label>目前居住情况</label><select id="f15"><option value="">请选择</option><option value="租房独居">租房独居</option><option value="已购房独居">已购房独居</option><option value="父母同居">父母同居</option><option value="合租">合租</option><option value="非独居">非独居</option></select></div>
       <div class="fld req"><label>恋爱/交往经验</label><select id="f16"><option value="">请选择</option><option value="无经验">无经验</option><option value="1段短期">1段短期</option><option value="1段长期">1段长期</option><option value="多段经历">多段经历</option><option value="曾经同居过">曾经同居过</option></select></div>
       <div class="btn-nav"><button type="button" class="btn btn-sec" onclick="goStep(3)">上一步</button><button type="button" class="btn" onclick="goStep(5)">下一步</button></div>
     </div>
@@ -492,8 +492,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3csvg xmlns='ht
     <!-- Step 5: 性格 -->
     <div class="step-content h" data-step="5">
       <div class="sec">个人特点</div>
-      <div class="fld req"><label>用3–5个关键词形容自己</label><input id="f17" placeholder="如：内敛、幽默、宅、有规划"></div>
-      <div class="fld req"><label>用3–5个关键词形容理想伴侣</label><input id="f18" placeholder="如：成熟、坦诚、有共同爱好"></div>
+      <div class="fld req"><label>用关键词形容自己（可多选，Ctrl+点击或手机直接点选）</label><select multiple id="f17" size="6"><option value="暖男">暖男</option><option value="闷骚">闷骚</option><option value="高冷">高冷</option><option value="阳光">阳光</option><option value="霸道">霸道</option><option value="粘人">粘人</option><option value="恋爱脑">恋爱脑</option><option value="大气">大气</option><option value="担当">担当</option><option value="独立">独立</option><option value="温柔">温柔</option><option value="直男感">直男感</option><option value="豪迈">豪迈</option><option value="小气">小气</option><option value="精致">精致</option><option value="粗糙">粗糙</option><option value="土直">土直</option><option value="硬汉">硬汉</option><option value="多金">多金</option><option value="高认知">高认知</option></select></div>
+      <div class="fld req"><label>爱好（可多选）</label><select multiple id="f26" size="5"><option value="健身">健身</option><option value="旅游">旅游</option><option value="手游">手游</option><option value="徒步">徒步</option><option value="桌游">桌游</option><option value="看剧">看剧</option><option value="看电影">看电影</option><option value="看书">看书</option><option value="摄影">摄影</option><option value="户外">户外</option><option value="赚钱">赚钱</option><option value="宅">宅</option></select></div>
+      <div class="fld req"><label>用关键词形容理想伴侣（可多选）</label><select multiple id="f18" size="6"><option value="暖男">暖男</option><option value="闷骚">闷骚</option><option value="高冷">高冷</option><option value="阳光">阳光</option><option value="霸道">霸道</option><option value="粘人">粘人</option><option value="恋爱脑">恋爱脑</option><option value="大气">大气</option><option value="担当">担当</option><option value="独立">独立</option><option value="温柔">温柔</option><option value="直男感">直男感</option><option value="豪迈">豪迈</option><option value="小气">小气</option><option value="精致">精致</option><option value="粗糙">粗糙</option><option value="土直">土直</option><option value="硬汉">硬汉</option><option value="多金">多金</option><option value="高认知">高认知</option></select></div>
       <div class="fld req"><label>最不能接受的缺点是？</label><input id="f19" placeholder="只写一个，如：冷暴力/不忠诚/控制欲强"></div>
       <div class="fld req"><label>是否接受异地恋？</label><select id="f20"><option value="">请选择</option><option value="完全不行">完全不行</option><option value="可短期">可短期</option><option value="无所谓">无所谓</option><option value="仅限同城">仅限同城</option></select></div>
       <div class="fld req"><label>你通常怎么交友？</label><textarea id="f21" placeholder="例如：用小软件，觉得效率低但不方便线下"></textarea></div>
@@ -503,8 +504,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3csvg xmlns='ht
     <!-- Step 6: 理想 + 提交 -->
     <div class="step-content h" data-step="6">
       <div class="sec">理想与补充</div>
-      <div class="fld req"><label>描述你理想对象（年龄、身高、角色、类型）</label><textarea id="f22" placeholder="例如：28–35岁，175+，0.5，斯文成熟型"></textarea></div>
-      <div class="fld req"><label>恋爱中你喜欢做什么？</label><textarea id="f23" placeholder="例如：喜欢互叫爱称、一起做饭、每天视频等"></textarea></div>
+
+
       <div class="fld req"><label>长久在一起最重要的因素是？</label><textarea id="f24" placeholder="一句话理由"></textarea></div>
       <div class="fld"><label>其他想说的</label><textarea id="f25" placeholder="自由填写"></textarea></div>
       <div class="sec">照片</div>
@@ -555,6 +556,8 @@ function startForm(){
         }).catch(function(){});
     }
   }, 600);
+
+
 }
 
 // ─── Touch drag to slide up splash ───
@@ -617,33 +620,53 @@ function goStep(n){
 
 function $(id){var e=document.getElementById(id);return e?e.value.trim():'';}
 
+var PC_DATA = {"北京": ["北京"], "上海": ["上海"], "广州": ["广州"], "深圳": ["深圳"], "天津": ["天津"], "重庆": ["重庆"], "广东": ["广州", "深圳", "珠海", "汕头", "佛山", "韶关", "湛江", "肇庆", "江门", "茂名", "惠州", "梅州", "汕尾", "河源", "阳江", "清远", "东莞", "中山", "潮州", "揭阳", "云浮"], "浙江": ["杭州", "宁波", "温州", "嘉兴", "湖州", "绍兴", "金华", "衢州", "舟山", "台州", "丽水"], "江苏": ["南京", "无锡", "徐州", "常州", "苏州", "南通", "连云港", "淮安", "盐城", "扬州", "镇江", "泰州", "宿迁"], "山东": ["济南", "青岛", "淄博", "枣庄", "东营", "烟台", "潍坊", "济宁", "泰安", "威海", "日照", "临沂", "德州", "聊城", "滨州", "菏泽"], "福建": ["福州", "厦门", "莆田", "三明", "泉州", "漳州", "南平", "龙岩", "宁德"], "四川": ["成都", "自贡", "攀枝花", "泸州", "德阳", "绵阳", "广元", "遂宁", "内江", "乐山", "南充", "眉山", "宜宾", "广安", "达州", "雅安", "巴中", "资阳"], "湖北": ["武汉", "黄石", "十堰", "宜昌", "襄阳", "鄂州", "荆门", "孝感", "荆州", "黄冈", "咸宁", "随州"], "湖南": ["长沙", "株洲", "湘潭", "衡阳", "邵阳", "岳阳", "常德", "张家界", "益阳", "郴州", "永州", "怀化", "娄底"], "河南": ["郑州", "开封", "洛阳", "平顶山", "安阳", "鹤壁", "新乡", "焦作", "濮阳", "许昌", "漯河", "三门峡", "南阳", "商丘", "信阳", "周口", "驻马店"], "河北": ["石家庄", "唐山", "秦皇岛", "邯郸", "邢台", "保定", "张家口", "承德", "沧州", "廊坊", "衡水"], "安徽": ["合肥", "芜湖", "蚌埠", "淮南", "马鞍山", "淮北", "铜陵", "安庆", "黄山", "滁州", "阜阳", "宿州", "六安", "亳州", "池州", "宣城"], "辽宁": ["沈阳", "大连", "鞍山", "抚顺", "本溪", "丹东", "锦州", "营口", "阜新", "辽阳", "盘锦", "铁岭", "朝阳", "葫芦岛"], "江西": ["南昌", "景德镇", "萍乡", "九江", "新余", "鹰潭", "赣州", "吉安", "宜春", "抚州", "上饶"], "陕西": ["西安", "铜川", "宝鸡", "咸阳", "渭南", "延安", "汉中", "榆林", "安康", "商洛"], "广西": ["南宁", "柳州", "桂林", "梧州", "北海", "防城港", "钦州", "贵港", "玉林", "百色", "贺州", "河池", "来宾", "崇左"], "云南": ["昆明", "曲靖", "玉溪", "保山", "昭通", "丽江", "普洱", "临沧"], "贵州": ["贵阳", "六盘水", "遵义", "安顺", "毕节", "铜仁"], "山西": ["太原", "大同", "阳泉", "长治", "晋城", "朔州", "晋中", "运城", "忻州", "临汾", "吕梁"], "吉林": ["长春", "吉林", "四平", "辽源", "通化", "白山", "松原", "白城"], "黑龙江": ["哈尔滨", "齐齐哈尔", "鸡西", "鹤岗", "双鸭山", "大庆", "伊春", "佳木斯", "七台河", "牡丹江", "黑河"], "甘肃": ["兰州", "嘉峪关", "金昌", "白银", "天水", "武威", "张掖", "平凉", "酒泉", "庆阳"], "海南": ["海口", "三亚", "儋州"], "内蒙古": ["呼和浩特", "包头", "乌海", "赤峰", "通辽", "鄂尔多斯", "呼伦贝尔"], "新疆": ["乌鲁木齐", "克拉玛依", "吐鲁番", "哈密", "昌吉", "巴音郭楞", "阿克苏", "喀什"], "宁夏": ["银川", "石嘴山", "吴忠", "固原", "中卫"], "青海": ["西宁", "海东"], "西藏": ["拉萨", "日喀则", "昌都", "林芝"], "港澳台": ["香港", "澳门", "台北", "高雄", "台中"], "海外": ["美国", "加拿大", "英国", "澳洲", "日本", "韩国", "新加坡"]};
+function updateCity(sel,targetId){
+  var g=document.getElementById(targetId);
+  if(!g)return;
+  g.innerHTML='<option value="">请选择城市</option>';
+  if(sel.value&&PC_DATA[sel.value]){
+    PC_DATA[sel.value].forEach(function(v){
+      var o=document.createElement('option');o.value=v;o.textContent=v;g.appendChild(o);
+    });
+  }
+}
+
+
 async function doSubmit(){
   var required=[
-    ['f1','请填写微信昵称'],['f2','请填写所在城市'],['f2c','请填写微信号'],['f2d','请填写手机号'],
-    ['f2b','请填写家乡'],['f3','请填写出生年份'],['f4','请选择月收入范围'],['f5','请填写行业'],
-    ['f6','请选择最高学历'],['f7','请填写身高/体重'],['f8','请选择你的体型'],
-    ['f9','请填写期望对方体型'],['f10','请选择你的性角色'],['f11','请选择期望对方角色'],
+    ['f1','请填写微信昵称'],['f2_prov','请选择所在省份'],['f2','请选择所在城市'],['f2c','请填写微信号'],['f2d','请填写手机号'],
+    ['f2b_prov','请选择家乡省份'],['f2b','请选择家乡城市'],['f3','请选择年龄'],['f4','请选择月收入范围'],['f5','请填写行业'],
+    ['f6','请选择最高学历'],['f7_h','请选择身高'],['f7_w','请选择体重'],['f8','请选择你的体型'],
+    ['f9','请选择期望对方体型'],['f10','请选择你的性角色'],['f11','请选择期望对方角色'],
     ['f12','请选择单身时长'],['f13','请选择出柜情况'],['f14','请选择是否考虑形婚'],
-    ['f15','请填写你对脱单的态度'],['f16','请选择恋爱经验'],
-    ['f17','请填写形容自己的关键词'],['f18','请填写理想伴侣的关键词'],
+    ['f15','请选择居住情况'],['f16','请选择恋爱经验'],
+    ['f17','请至少选择一个自我标签'],['f26','请至少选择一个爱好'],['f18','请至少选择一个理想标签'],
     ['f19','请填写最不能接受的缺点'],['f20','请选择是否接受异地恋'],
-    ['f21','请填写交友方式'],['f22','请描述理想对象'],['f23','请填写恋爱中的偏好'],
+    ['f21','请填写交友方式'],
     ['f24','请填写长久在一起最重要的因素']
   ];
-  for(var i=0;i<required.length;i++){
+  function _chk(id,msg){var el=document.getElementById(id);if(!el)return true;if(el.tagName=='SELECT'){if(el.selectedOptions.length==0){alert(msg);el.focus();return false;}}else{var c=el.querySelectorAll('input:checked');if(c.length==0){alert(msg);return false;}}return true;}
+    for(var i=0;i<required.length;i++){
     var el=document.getElementById(required[i][0]);
-    if(!el||!el.value.trim()){alert(required[i][1]);if(el)el.focus();return;}
+    if(!el) continue;
+    if(el.tagName=='DIV'&&el.id=='f17'){if(!_chk('f17',required[i][1]))return;}
+    else if(el.tagName=='DIV'&&el.id=='f18'){if(!_chk('f18',required[i][1]))return;}
+    else if(el.tagName=='DIV'&&el.id=='f26'){if(!_chk('f26',required[i][1]))return;}
+    else if(!el.value.trim()){alert(required[i][1]);el.focus();return;}
   }
   var btn=document.getElementById('submitBtn');
   btn.disabled=true;btn.classList.add('loading');
   var data={
-    city:$('f2'),wechat:$('f2c'),phone:$('f2d'),hometown:$('f2b'),
+    city:(function(){var p=document.getElementById('f2_prov'),c=document.getElementById('f2');return (p?p.value:'')+'/'+(c?c.value:'');})(),wechat:$('f2c'),phone:$('f2d'),hometown:(function(){var p=document.getElementById('f2b_prov'),c=document.getElementById('f2b');return (p?p.value:'')+'/'+(c?c.value:'');})(),
     nickname:$('f1'),birth_info:$('f3'),income:$('f4'),job:$('f5'),education:$('f6'),
-    hw:$('f7'),body_type:$('f8'),ideal_body_type:$('f9'),
+    hw:($('f7_h')||'')+'/'+($('f7_w')||''),body_type:$('f8'),ideal_body_type:$('f9'),
     role_self:$('f10'),ideal_role:$('f11'),
     single_duration:$('f12'),out_status:$('f13'),marriage:$('f14'),
     attitude_live:$('f15'),experience:$('f16'),
-    self_tags:$('f17'),ideal_type_tags:$('f18'),dealbreaker:$('f19'),
+    self_tags:Array.from(document.getElementById('f17').selectedOptions).map(function(o){return o.value}).join('、'),
+    hobbies:Array.from(document.getElementById('f26').selectedOptions).map(function(o){return o.value}).join('、'),
+    ideal_type_tags:Array.from(document.getElementById('f18').selectedOptions).map(function(o){return o.value}).join('、'),dealbreaker:$('f19'),
     long_distance:$('f20'),social_info:$('f21'),
     ideal_desc:$('f22'),love_habits:$('f23'),why_together:$('f24'),extra_message:$('f25'),
     token:(document.getElementById('token-input')||{}).value||'',
@@ -676,22 +699,51 @@ async function sendForm(d){
 </body>
 </html>"""""
 class RegisterFormData(BaseModel):
+    # 基本
     nickname: str = ""
     city: str = ""
+    wechat: str = ""
+    phone: str = ""
+    hometown: str = ""
+    birth_info: str = ""
     age: str = ""
+    income: str = ""
+    job: str = ""
+    education: str = ""
+    # 外貌
+    hw: str = ""
     height: str = ""
     weight: str = ""
+    body_type: str = ""
+    ideal_body_type: str = ""
+    # 角色
     role_self: str = ""
-    job: str = ""
-    income: str = ""
-    lifestyle_status: str = ""
+    ideal_role: str = ""
+    # 感情现状
+    single_duration: str = ""
+    out_status: str = ""
+    marriage: str = ""
+    attitude_live: str = ""
+    experience: str = ""
+    # 性格
+    self_tags: str = ""
+    ideal_type_tags: str = ""
     hobbies: str = ""
+    dealbreaker: str = ""
+    long_distance: str = ""
+    social_info: str = ""
+    # 期待
+    ideal_desc: str = ""
+    love_habits: str = ""
+    why_together: str = ""
+    extra_message: str = ""
+    # 系统
+    photo_base64: str = ""
+    token: str = ""
+    source: str = ""
+    lifestyle_status: str = ""
     current_situation: str = ""
     expectation: str = ""
-    long_distance: str = ""  # 是否接受短暂异地
-    body_type: str = ""  # 你认为自己的体型是
-    token: str = ""  # 专属链接 token
-    source: str = ""  # 来源渠道: gongzhonghao / zhuanshu / etc
 
 @router.get("/register-form", response_class=HTMLResponse)
 def register_form():
@@ -717,21 +769,6 @@ async def check_link(token: str = Query(...), db: Session = Depends(get_db)):
     }
 
 
-def _parse_age(age_str: str) -> int | None:
-    """把年龄字符串转成整数"""
-    try:
-        return int(age_str.strip())
-    except (ValueError, AttributeError):
-        return None
-
-
-def _parse_int(val: str) -> int | None:
-    try:
-        return int(val.strip())
-    except (ValueError, AttributeError):
-        return None
-
-
 def _save_member_profile(db: Session, data: RegisterFormData, link: RegistrationLink, result: dict) -> None:
     """保存会员精简档案到 member_profiles 表（25题版）"""
     import base64 as _b64, os as _os
@@ -750,19 +787,12 @@ def _save_member_profile(db: Session, data: RegisterFormData, link: Registration
                 weight_val = int(parts[1].strip())
         except: pass
 
-    # 解析年龄
+    # 解析年龄（下拉框直接取值 18-60）
     age_val = None
-    bi = data.birth_info.strip()
-    import re as _re
-    m = _re.search(r"(\d{4})", bi)
-    if m:
-        from datetime import datetime as _dt
-        age_val = _dt.now().year - int(m.group(1))
-    else:
-        m = _re.search(r"(\d+)", bi)
-        if m:
-            try: age_val = int(m.group(1))
-            except: pass
+    try:
+        age_val = int(data.birth_info.strip())
+    except (ValueError, AttributeError):
+        pass
 
     # 保存照片
     photo_path = ""
@@ -814,26 +844,49 @@ def _save_member_profile(db: Session, data: RegisterFormData, link: Registration
 
     lifestyle = "\n".join(ext) if ext else ""
 
-    p = MemberProfile(
-        external_userid=link.external_userid or "",
-        employee_userid=link.employee_userid or "",
-        token=link.token,
-        nickname=data.nickname or (data.nickname if data.nickname else "匿名"),
-        city=data.city or "",
-        age=age_val,
-        height=height_val,
-        weight=weight_val,
-        role_self=data.role_self or "",
-        body_type=data.body_type or "",
-        job=data.job or "",
-        income=data.income or "",
-        lifestyle_status=lifestyle,
-        hobbies="",
-        current_situation="",
-        expectation="",
-        tags_applied=json.dumps(result.get("tags", []), ensure_ascii=False),
-        source=data.source or "",
-    )
+    # 检查是否已有同名档案（更新场景：客户重新填表）
+    _existing = db.query(MemberProfile).filter(
+        MemberProfile.nickname == (data.nickname or "").strip(),
+        MemberProfile.employee_userid == (link.employee_userid or ""),
+    ).first()
+
+    if _existing:
+        # 更新已有档案（保留 id 和 created_at）
+        _existing.employee_userid = link.employee_userid or ""
+        _existing.token = link.token
+        _existing.nickname = data.nickname or (data.nickname if data.nickname else "匿名")
+        _existing.city = data.city or ""
+        _existing.age = age_val
+        _existing.height = height_val
+        _existing.weight = weight_val
+        _existing.role_self = data.role_self or ""
+        _existing.body_type = data.body_type or ""
+        _existing.job = data.job or ""
+        _existing.income = data.income or ""
+        _existing.lifestyle_status = lifestyle
+        _existing.source = "链接更新"
+        p = _existing
+    else:
+        p = MemberProfile(
+            external_userid=link.external_userid or "",
+            employee_userid=link.employee_userid or "",
+            token=link.token,
+            nickname=data.nickname or (data.nickname if data.nickname else "匿名"),
+            city=data.city or "",
+            age=age_val,
+            height=height_val,
+            weight=weight_val,
+            role_self=data.role_self or "",
+            body_type=data.body_type or "",
+            job=data.job or "",
+            income=data.income or "",
+            lifestyle_status=lifestyle,
+            hobbies="",
+            current_situation="",
+            expectation="",
+            tags_applied=json.dumps(result.get("tags", []), ensure_ascii=False),
+            source=data.source or "",
+        )
     # 自动评分
     try:
         from app.services.member_scorer import score_member
@@ -873,6 +926,7 @@ def _save_member_profile(db: Session, data: RegisterFormData, link: Registration
 @router.post("/register-form-submit")
 async def register_form_submit(data: RegisterFormData, db: Session = Depends(get_db)):
     """客户提交登记表（有 token 则自动打标签）"""
+    from datetime import datetime, timezone
     if not data.nickname:
         raise HTTPException(400, "昵称不能为空")
 
@@ -892,20 +946,85 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
         ).first()
 
         if link:
+            # 第一步（最高优先级）：保存数据到 member_profiles
+            _profile_saved = False
+            _emergency_backup = ""
             try:
-                # 查找客户 external_userid：优先用链接里存好的，没有才按昵称搜
+                _save_member_profile(db, data, link, result)
+                _profile_saved = True
+            except Exception as _save_e:
+                result["save_warning"] = str(_save_e)
+                try:
+                    import uuid as _uuid, os as _os
+                    _backup_dir = "/data/yufeng-uploads/emergency_backup"
+                    _os.makedirs(_backup_dir, exist_ok=True)
+                    _backup_file = _os.path.join(_backup_dir, "form_" + link.token + "_" + _uuid.uuid4().hex[:8] + ".json")
+                    with open(_backup_file, "w", encoding="utf-8") as _bf:
+                        _backup_data = {
+                            "token": link.token,
+                            "customer_name": link.customer_name,
+                            "employee_userid": link.employee_userid,
+                            "form_data": {
+                                "nickname": data.nickname,
+                                "city": data.city,
+                                "wechat": data.wechat,
+                                "phone": data.phone,
+                                "hometown": data.hometown,
+                                "birth_info": data.birth_info,
+                                "income": data.income,
+                                "job": data.job,
+                                "education": data.education,
+                                "hw": data.hw,
+                                "body_type": data.body_type,
+                                "ideal_body_type": data.ideal_body_type,
+                                "role_self": data.role_self,
+                                "ideal_role": data.ideal_role,
+                                "single_duration": data.single_duration,
+                                "out_status": data.out_status,
+                                "marriage": data.marriage,
+                                "attitude_live": data.attitude_live,
+                                "experience": data.experience,
+                                "self_tags": data.self_tags,
+                                "ideal_type_tags": data.ideal_type_tags,
+                                "dealbreaker": data.dealbreaker,
+                                "long_distance": data.long_distance,
+                                "social_info": data.social_info,
+                                "ideal_desc": data.ideal_desc,
+                                "love_habits": data.love_habits,
+                                "why_together": data.why_together,
+                                "extra_message": data.extra_message,
+                                "has_photo": bool(data.photo_base64),
+                            },
+                            "submitted_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        json.dump(_backup_data, _bf, ensure_ascii=False, indent=2)
+                    _emergency_backup = _backup_file
+                except Exception as _backup_e:
+                    result["save_warning"] += " | 紧急备份也失败: " + str(_backup_e)
+
+            link.status = "used"
+            link.used_at = datetime.now(timezone.utc)
+            link.submit_result = json.dumps({
+                "nickname": data.nickname,
+                "city": data.city,
+                "age": data.age,
+                "role_self": data.role_self,
+                "tags_applied": [],
+                "auto_tagged": False,
+            }, ensure_ascii=False)
+            db.commit()
+
+            # 第二步：打标签 + 自动备注 (WeCom API，可失败)
+            try:
                 ext_userid = link.external_userid
                 if not ext_userid:
                     ext_userid = await find_external_userid(
                         link.employee_userid, link.customer_name
                     )
-                    # 找到了就存一下，下次不用再搜
                     if ext_userid:
                         link.external_userid = ext_userid
                         db.commit()
                 if ext_userid:
-                    # 生成标签
-                    # 适配新版字段到 evaluate_member_level 需要的格式
                     form_dict = {
                         "city": data.city,
                         "age": data.birth_info,
@@ -921,8 +1040,6 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                         "body_type": data.body_type,
                     }
                     tag_names = suggest_tags_from_form(form_dict)
-
-                    # 打标签
                     await ensure_tag_group()
                     tag_ids = []
                     for name in tag_names:
@@ -930,7 +1047,6 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                         tag_ids.append(tag_id)
                     await mark_tag(ext_userid, tag_ids, employee_userid=link.employee_userid)
 
-                    # 计算年龄
                     age_str = ""
                     if data.age:
                         age_str = str(data.age)
@@ -938,47 +1054,43 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                         import re
                         m = re.search(r"(\d{4})", data.birth_info)
                         if m:
-                            from datetime import datetime
                             age_str = str(datetime.now().year - int(m.group(1)))
 
-                    # 等级（从标签里取）
                     level = evaluate_member_level(form_dict)
 
-                    # 自动备注（格式：昵称｜城市｜属性｜年龄｜等级）
                     try:
                         from app.services.wecom import remark_external_contact, upload_wecom_image_media
                         import io as _io, base64 as _b64
                         from PIL import Image as _Image
 
-                        remark_text = f"{data.nickname or ''}｜{data.city or ''}｜{data.role_self or ''}｜{age_str}｜{level}"
-                        desc = (
-                            f"昵称: {data.nickname or ''}"
-                            f" 城市: {data.city or ''}"
-                            f" 年龄: {data.birth_info or ''}"
-                            f" 属性: {data.role_self or ''}"
-                            f" 身高/体重: {data.hw or ''}"
-                            f" 体型: {data.body_type or ''}"
-                            f" 职业: {data.job or ''}"
-                            f" 学历: {data.education or ''}"
-                            f" 收入: {data.income or ''}"
-                            f" 微信: {data.wechat or ''}"
-                            f" 手机: {data.phone or ''}"
-                            f" 出柜: {data.out_status or ''}"
-                            f" 单身: {data.single_duration or ''}"
-                            f" 自我标签: {data.self_tags or ''}"
-                            f" 理想型: {data.ideal_type_tags or ''}"
-                            f" 雷区: {data.dealbreaker or ''}"
-                            f" 异地: {data.long_distance or ''}"
-                            f" 恋爱观: {data.love_habits or ''} {data.why_together or ''}"
-                            f" 其他: {data.extra_message or ''}"
-                        )
+                        remark_text = "|".join([data.nickname or "", data.city or "", data.role_self or "", age_str, level])
+                        desc_parts = [
+                            "昵称: " + (data.nickname or ""),
+                            "城市: " + (data.city or ""),
+                            "年龄: " + (data.birth_info or ""),
+                            "属性: " + (data.role_self or ""),
+                            "身高/体重: " + (data.hw or ""),
+                            "体型: " + (data.body_type or ""),
+                            "职业: " + (data.job or ""),
+                            "学历: " + (data.education or ""),
+                            "收入: " + (data.income or ""),
+                            "微信: " + (data.wechat or ""),
+                            "手机: " + (data.phone or ""),
+                            "出柜: " + (data.out_status or ""),
+                            "单身: " + (data.single_duration or ""),
+                            "自我标签: " + (data.self_tags or ""),
+                            "理想型: " + (data.ideal_type_tags or ""),
+                            "雷区: " + (data.dealbreaker or ""),
+                            "异地: " + (data.long_distance or ""),
+                            "恋爱观: " + (data.love_habits or "") + " " + (data.why_together or ""),
+                            "其他: " + (data.extra_message or ""),
+                        ]
+                        desc = " ".join(desc_parts)
                         remark_pic_mediaid = ""
                         if data.photo_base64:
                             try:
-                                # 解码 → 压缩（最长边800px）→ 保存临时文件 → 上传企微
                                 img_data = _b64.b64decode(data.photo_base64)
                                 img = _Image.open(_io.BytesIO(img_data))
-                                # 压缩：最长边 800px，JPEG 质量 70
                                 max_size = 800
                                 w, h = img.size
                                 if w > max_size or h > max_size:
@@ -988,21 +1100,16 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                                 if img.mode in ("RGBA", "P"):
                                     img = img.convert("RGB")
                                 img.save(compressed, format="JPEG", quality=70, optimize=True)
-                                # 保存临时文件
                                 import tempfile as _tf, os as _os
-                                tmp_path = _os.path.join(_tf.gettempdir(), f"member_photo_{link.token}.jpg")
+                                tmp_path = _os.path.join(_tf.gettempdir(), "member_photo_" + link.token + ".jpg")
                                 with open(tmp_path, "wb") as _f:
                                     _f.write(compressed.getvalue())
-                                # 上传到企微
                                 remark_pic_mediaid = await upload_wecom_image_media(tmp_path)
-                                # 清理临时文件
                                 try: _os.remove(tmp_path)
                                 except: pass
                                 desc += " [已传照片]"
-                            except Exception as _pic_err:
+                            except Exception:
                                 desc += " [照片上传失败]"
-                                pass
-
                         await remark_external_contact(
                             employee_userid=link.employee_userid,
                             external_userid=ext_userid,
@@ -1010,8 +1117,8 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                             description=desc[:500],
                             remark_pic_mediaid=remark_pic_mediaid,
                         )
-                    except Exception:
-                        pass  # 备注失败不阻断
+                    except Exception as _rem_e:
+                        result["remark_warning"] = str(_rem_e)
 
                     result["auto_tagged"] = True
                     result["external_userid"] = ext_userid
@@ -1019,10 +1126,23 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                 else:
                     result["tag_warning"] = "客户不在最近客户列表中，需手动补打标签"
             except Exception as e:
-                # 打标签失败不阻断表单提交
                 result["tag_error"] = str(e)
 
-            # 无论打标签成功与否，链接标记为已使用
+            try:
+                link.submit_result = json.dumps({
+                    "nickname": data.nickname,
+                    "city": data.city,
+                    "age": data.age,
+                    "role_self": data.role_self,
+                    "tags_applied": result.get("tags_applied", []),
+                    "auto_tagged": result.get("auto_tagged", False),
+                }, ensure_ascii=False)
+                db.commit()
+            except Exception:
+                pass
+
+            if _emergency_backup:
+                result["emergency_backup"] = _emergency_backup            # 无论打标签成功与否，链接标记为已使用
             link.status = "used"
             link.used_at = datetime.now(timezone.utc)
             link.submit_result = json.dumps({
