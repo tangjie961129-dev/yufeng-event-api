@@ -219,7 +219,7 @@ def _query_by_city_role(db, content):
     import re
     m = re.search(r"(?:查|找)?\s*(.+?)\s*的\s*(0|1|0\.5|side|双|其他)\s*$", content)
     if not m:
-        m = re.search(r"(?:查|找)?\s*(.+?)\s+([0-9.]+|side|双)\s*$", content)
+        m = re.search(r"(?:查|找)?\s*(.+?)\s*([0-9.]+|side|双)\s*$", content)
     if not m:
         return None
     city_search = m.group(1).strip()
