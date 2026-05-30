@@ -210,6 +210,66 @@ def _extract_query_name(text: str) -> str | None:
 # ─── 同步查询/匹配（在回调内直接完成，不靠异步 DeepSeek） ────
 
 
+
+def _query_by_city_role(db, content):
+    """粗查询：按城市+属性筛选会员
+    说「查西安的1」「查广州的0」「深圳0.5」「北京的side」
+    同时查 users、member_profiles、huxuan_profiles
+    """
+    import re
+    m = re.search(r"(?:查|找)?\s*(.+?)\s*的\s*(0|1|0\.5|side|双|其他)\s*$", content)
+    if not m:
+        m = re.search(r"(?:查|找)?\s*(.+?)\s+([0-9.]+|side|双)\s*$", content)
+    if not m:
+        return None
+    city_search = m.group(1).strip()
+    role_search = m.group(2).strip()
+    if not city_search or not role_search:
+        return None
+    from app.models.member_profile import MemberProfile
+    from app.models.huxuan_profile import HuxuanProfile
+    seen = set()
+    combined = []
+    for mp in db.query(MemberProfile).filter(
+        MemberProfile.nickname.isnot(None), MemberProfile.nickname != "",
+        MemberProfile.city.ilike(f"%{city_search}%"),
+        MemberProfile.role_self == role_search,
+    ).order_by(MemberProfile.age.asc().nullslast()).limit(20).all():
+        k = (mp.nickname or "").strip()
+        if k and k not in seen:
+            seen.add(k); combined.append(("mp", mp))
+    # 暂不包含 users（模型缺 role_self 字段）
+    for h in db.query(HuxuanProfile).filter(
+        HuxuanProfile.昵称.isnot(None), HuxuanProfile.昵称 != "",
+        HuxuanProfile.城市.ilike(f"%{city_search}%"),
+        HuxuanProfile.属性 == role_search,
+    ).limit(20).all():
+        k = (h.昵称 or "").strip()
+        if k and k not in seen:
+            seen.add(k); combined.append(("hx", h))
+    if not combined:
+        return (
+            "\u2501\u2501\u2501 \U0001f50d \u7c97\u67e5\u8be2 \u2501\u2501\u2501\n\n"
+            f"\u672a\u627e\u5230\u300c{city_search}\u300d\u7684{role_search}\n\n"
+            "\U0001f4a1 \u53ef\u8bf4\u300c\u67e5XX\u7684\u6863\u6848\u300d\u5355\u4e2a\u67e5\u8be2"
+        )
+    combined = combined[:20]
+    out = [f"\u2501\u2501\u2501 \U0001f50d {city_search}\u7684{role_search} \u2501\u2501\u2501", ""]
+    out.append(f"\u5171\u67e5\u5230 {len(combined)} \u4f4d\u4f1a\u5458\uff1a\n")
+    for i, (src, e) in enumerate(combined, 1):
+        if src == "hx":
+            nm = e.昵称 or "?"; ct = e.城市 or "?"
+            ag = f"{e.年龄}\u5c81" if e.年龄 else "?"
+            bd = e.体型 or "?"; jb = e.职业 or "?"
+        else:
+            nm = e.nickname or "?"; ct = e.city or "?"
+            ag = f"{e.age}\u5c81" if e.age else "?"
+            bd = e.body_type or "?"; jb = e.job or "?"
+        out.append(f"{i}. {nm} | {ct} | {ag} | {bd} | {jb}")
+        out.append(f"   \U0001f4a1 \u8bf4\u300c\u67e5{nm}\u7684\u6863\u6848\u300d\u67e5\u770b\u8be6\u7ec6")
+    out.append("")
+    out.append("\U0001f4a1 \u53ef\u8bf4\u300c\u67e5\u5176\u4ed6\u57ce\u5e02\u7684X\u300d\u7ee7\u7eed\u7b5b\u9009")
+    return "\n".join(out)
 def _query_member_sync(db: Session, content: str) -> str | None:
     """同步查会员档案，直接返回格式化结果"""
     query_name = _extract_query_name(content)
@@ -654,26 +714,25 @@ async def wecom_callback_event(
 
     # --- 层3：查档案/打听 ---
     elif any(kw in content for kw in ["查", "打听", "档案"]):
-        # 同步查询
-        result = _query_member_sync(db, content)
-        if result:
-            reply_text = result
-        else:
-            query_name = _extract_query_name(content)
-            if query_name:
-                reply_text = (
-                    "━━━ 📋 查会员档案 ━━━\n\n"
-                    f"未找到「{query_name}」的档案信息。\n\n"
-                    f"💡 可能原因：客户尚未填表登记，说「给{query_name}发填表链接」让他先填表"
-                )
-            else:
-                reply_text = (
-                    "━━━ 📋 查会员档案 ━━━\n\n"
-                    "请说「查XX的档案」查看会员信息\n"
-                    "例如：查清风的档案\n\n"
-                    "💡 也可说「打听XX」了解基本情况"
-                )
-
+        # 粗查询优先：按城市+属性筛选
+        reply_text = _query_by_city_role(db, content)
+        if not reply_text:
+            reply_text = _query_member_sync(db, content)
+            if not reply_text:
+                query_name = _extract_query_name(content)
+                if query_name:
+                    reply_text = (
+                        "\u2501\u2501\u2501 \U0001f4cb \u67e5\u4f1a\u5458\u6863\u6848 \u2501\u2501\u2501\n\n"
+                        f"\u672a\u627e\u5230\u300c{query_name}\u300d\u7684\u6863\u6848\u4fe1\u606f\u3002\n\n"
+                        f"\U0001f4a1 \u53ef\u80fd\u539f\u56e0\uff1a\u5ba2\u6237\u5c1a\u672a\u586b\u8868\u767b\u8bb0\uff0c\u8bf4\u300c\u7ed9{query_name}\u53d1\u586b\u8868\u94fe\u63a5\u300d\u8ba9\u4ed6\u5148\u586b\u8868"
+                    )
+                else:
+                    reply_text = (
+                        "\u2501\u2501\u2501 \U0001f4cb \u67e5\u4f1a\u5458\u6863\u6848 \u2501\u2501\u2501\n\n"
+                        "\u8bf7\u8bf4\u300c\u67e5XX\u7684\u6863\u6848\u300d\u67e5\u770b\u4f1a\u5458\u4fe1\u606f\n"
+                        "\u4f8b\u5982\uff1a\u67e5\u6e05\u98ce\u7684\u6863\u6848\n\n"
+                        "\U0001f4a1 \u4e5f\u53ef\u8bf4\u300c\u6253\u542cXX\u300d\u4e86\u89e3\u57fa\u672c\u60c5\u51b5"
+                    )
     # --- 层4：推荐匹配 ---
     elif any(kw in content for kw in ["推荐", "匹配", "推荐匹配", "介绍"]):
         reply_text = _recommend_match_sync(db, content, from_user)
