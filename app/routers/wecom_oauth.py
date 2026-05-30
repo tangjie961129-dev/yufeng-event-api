@@ -668,7 +668,7 @@ async function doSubmit(){
     hobbies:Array.from(document.getElementById('f26').selectedOptions).map(function(o){return o.value}).join('、'),
     ideal_type_tags:Array.from(document.getElementById('f18').selectedOptions).map(function(o){return o.value}).join('、'),dealbreaker:$('f19'),
     long_distance:$('f20'),social_info:$('f21'),
-    ideal_desc:$('f22'),love_habits:$('f23'),why_together:$('f24'),extra_message:$('f25'),
+    why_together:$('f24'),extra_message:$('f25'),
     token:(document.getElementById('token-input')||{}).value||'',
     source: window.location.pathname.includes("register-form-public")?"gongzhonghao":"",
     age:'',lifestyle_status:'',hobbies:'',current_situation:'',expectation:''
@@ -698,57 +698,33 @@ async function sendForm(d){
 </script>
 </body>
 </html>"""""
+
 class RegisterFormData(BaseModel):
-    # 基本
     nickname: str = ""
     city: str = ""
-    wechat: str = ""
-    phone: str = ""
-    hometown: str = ""
-    birth_info: str = ""
     age: str = ""
-    income: str = ""
-    job: str = ""
-    education: str = ""
-    # 外貌
-    hw: str = ""
     height: str = ""
     weight: str = ""
-    body_type: str = ""
-    ideal_body_type: str = ""
-    # 角色
     role_self: str = ""
-    ideal_role: str = ""
-    # 感情现状
-    single_duration: str = ""
-    out_status: str = ""
-    marriage: str = ""
-    attitude_live: str = ""
-    experience: str = ""
-    # 性格
-    self_tags: str = ""
-    ideal_type_tags: str = ""
-    hobbies: str = ""
-    dealbreaker: str = ""
-    long_distance: str = ""
-    social_info: str = ""
-    # 期待
-    ideal_desc: str = ""
-    love_habits: str = ""
-    why_together: str = ""
-    extra_message: str = ""
-    # 系统
-    photo_base64: str = ""
-    token: str = ""
-    source: str = ""
+    job: str = ""
+    income: str = ""
     lifestyle_status: str = ""
+    hobbies: str = ""
     current_situation: str = ""
     expectation: str = ""
+    long_distance: str = ""  # 是否接受短暂异地
+    body_type: str = ""  # 你认为自己的体型是
+    token: str = ""  # 专属链接 token
+
+
+
 
 @router.get("/register-form", response_class=HTMLResponse)
 def register_form():
     """显示会员登记 H5 表单（支持 ?token=xxx 专属链接）"""
     return HTMLResponse(REGISTER_FORM_HTML)
+
+
 @router.get("/register-form-public", response_class=HTMLResponse)
 def register_form_public():
     """公众号专属链接，固定入口，来源标记为 gongzhonghao"""
@@ -768,165 +744,67 @@ async def check_link(token: str = Query(...), db: Session = Depends(get_db)):
         "customer_name": link.customer_name,
     }
 
+def _parse_age(age_str: str) -> int | None:
+    try:
+        return int(age_str.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _parse_int(val: str) -> int | None:
+    try:
+        return int(val.strip())
+    except (ValueError, AttributeError):
+        return None
+
 
 def _save_member_profile(db: Session, data: RegisterFormData, link: RegistrationLink, result: dict) -> None:
-    """保存会员精简档案到 member_profiles 表（25题版）"""
-    import base64 as _b64, os as _os
+    """保存或更新会员档案"""
+    ext_userid = result.get("external_userid") or ""
 
-    # 解析身高体重
-    height_val = None
-    weight_val = None
-    if data.hw and "/" in data.hw:
-        parts = data.hw.split("/")
-        try:
-            if parts[0].strip().isdigit():
-                height_val = int(parts[0].strip())
-        except: pass
-        try:
-            if len(parts) > 1 and parts[1].strip().isdigit():
-                weight_val = int(parts[1].strip())
-        except: pass
+    profile = None
+    if ext_userid:
+        profile = db.query(MemberProfile).filter(
+            MemberProfile.external_userid == ext_userid
+        ).first()
 
-    # 解析年龄（下拉框直接取值 18-60）
-    age_val = None
-    try:
-        age_val = int(data.birth_info.strip())
-    except (ValueError, AttributeError):
-        pass
+    if not profile:
+        profile = MemberProfile()
 
-    # 保存照片
-    photo_path = ""
-    if data.photo_base64:
-        PHOTO_DIR = "/data/yufeng-uploads/member_photos"
-        import uuid as _uuid
-        _os.makedirs(PHOTO_DIR, exist_ok=True)
-        filename = f"member_{link.token}_{_uuid.uuid4().hex[:12]}.jpg"
-        filepath = _os.path.join(PHOTO_DIR, filename)
-        try:
-            with open(filepath, "wb") as _f:
-                _f.write(_b64.b64decode(data.photo_base64))
-            photo_path = f"/static/member_photos/{filename}"
-        except Exception:
-            photo_path = "[照片上传失败]"
+    profile.external_userid = ext_userid if ext_userid else None
+    profile.employee_userid = link.employee_userid
+    profile.token = link.token
+    profile.nickname = data.nickname
+    profile.city = data.city
+    profile.age = _parse_age(data.age)
+    profile.height = _parse_int(data.height)
+    profile.weight = _parse_int(data.weight)
+    profile.role_self = data.role_self
+    profile.body_type = data.body_type
+    profile.job = data.job
+    profile.income = data.income
+    profile.lifestyle_status = data.lifestyle_status
+    profile.hobbies = data.hobbies
+    profile.current_situation = data.current_situation
+    profile.expectation = data.expectation
+    profile.long_distance = data.long_distance
+    profile.tags_applied = json.dumps(result.get("tags_applied", []), ensure_ascii=False)
 
-    # 拼接所有字段
-    ext = []
-    def _add(label, val):
-        if val: ext.append(f"{label}：{val}")
-    _add("微信昵称", data.nickname)
-    _add("微信号", data.wechat)
-    _add("手机号", data.phone)
-    _add("家乡", data.hometown)
-    _add("出生信息", data.birth_info)
-    _add("月收入", data.income)
-    _add("行业", data.job)
-    _add("学历", data.education)
-    _add("身高/体重", data.hw)
-    _add("自评体型", data.body_type)
-    _add("期望对方体型", data.ideal_body_type)
-    _add("性角色", data.role_self)
-    _add("期望对方角色", data.ideal_role)
-    _add("单身时长", data.single_duration)
-    _add("出柜情况", data.out_status)
-    _add("形婚考虑", data.marriage)
-    _add("脱单态度/同居", data.attitude_live)
-    _add("交往经验", data.experience)
-    _add("自我关键词", data.self_tags)
-    _add("理想伴侣关键词", data.ideal_type_tags)
-    _add("最不能接受", data.dealbreaker)
-    _add("异地接受度", data.long_distance)
-    _add("交友方式/看法", data.social_info)
-    _add("理想对象描述", data.ideal_desc)
-    _add("恋爱小癖好", data.love_habits)
-    _add("长久因素", data.why_together)
-    _add("其他/建议", data.extra_message)
-    _add("照片", photo_path)
+    db.add(profile)
 
-    lifestyle = "\n".join(ext) if ext else ""
-
-    # 检查是否已有同名档案（更新场景：客户重新填表）
-    _existing = db.query(MemberProfile).filter(
-        MemberProfile.nickname == (data.nickname or "").strip(),
-        MemberProfile.employee_userid == (link.employee_userid or ""),
-    ).first()
-
-    if _existing:
-        # 更新已有档案（保留 id 和 created_at）
-        _existing.employee_userid = link.employee_userid or ""
-        _existing.token = link.token
-        _existing.nickname = data.nickname or (data.nickname if data.nickname else "匿名")
-        _existing.city = data.city or ""
-        _existing.age = age_val
-        _existing.height = height_val
-        _existing.weight = weight_val
-        _existing.role_self = data.role_self or ""
-        _existing.body_type = data.body_type or ""
-        _existing.job = data.job or ""
-        _existing.income = data.income or ""
-        _existing.lifestyle_status = lifestyle
-        _existing.source = "链接更新"
-        p = _existing
-    else:
-        p = MemberProfile(
-            external_userid=link.external_userid or "",
-            employee_userid=link.employee_userid or "",
-            token=link.token,
-            nickname=data.nickname or (data.nickname if data.nickname else "匿名"),
-            city=data.city or "",
-            age=age_val,
-            height=height_val,
-            weight=weight_val,
-            role_self=data.role_self or "",
-            body_type=data.body_type or "",
-            job=data.job or "",
-            income=data.income or "",
-            lifestyle_status=lifestyle,
-            hobbies="",
-            current_situation="",
-            expectation="",
-            tags_applied=json.dumps(result.get("tags", []), ensure_ascii=False),
-            source=data.source or "",
-        )
-    # 自动评分
-    try:
-        from app.services.member_scorer import score_member
-        profile = {
-            "income": data.income or "",
-            "city": data.city or "",
-            "role_self": data.role_self or "",
-            "ideal_role": data.ideal_role or "",
-            "birth_info": data.birth_info or "",
-            "nickname": data.nickname or "",
-            "height": str(height_val or ""),
-            "weight": str(weight_val or ""),
-            "body_type": data.body_type or "",
-            "job": data.job or "",
-            "education": data.education or "",
-            "hobbies": "",
-            "current_situation": "",
-            "expectation": data.ideal_desc or data.dealbreaker or "",
-            "ideal_desc": data.ideal_desc or "",
-            "dealbreaker": data.dealbreaker or "",
-            "marriage": data.marriage or "",
-            "photos": photo_path or "",
-            "lifestyle_status": lifestyle,
-            "long_distance": data.long_distance or "",
-        }
-        level, score, _ = score_member(profile)
-        p.level = level
-        p.level_score = score
-    except Exception:
-        pass
-    
-    db.add(p)
-    db.commit()
-    db.refresh(p)
-    return p
 
 @router.post("/register-form-submit")
 async def register_form_submit(data: RegisterFormData, db: Session = Depends(get_db)):
-    """客户提交登记表（有 token 则自动打标签）"""
+    """客户提交登记表（有 token 则自动打标签）
+
+    执行顺序（优先级从高到低）：
+    1. 保存完整表单数据到 member_profiles（失败则紧急备份到磁盘）
+    2. 标记链接为已使用 + commit（数据持久化）
+    3. 打标签 + 自动备注（WeCom API，可失败，不阻断）
+    4. 匹配推送（可失败，不阻断）
+    """
     from datetime import datetime, timezone
+
     if not data.nickname:
         raise HTTPException(400, "昵称不能为空")
 
@@ -938,257 +816,174 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
         "auto_tagged": False,
     }
 
-    # ── 有 token：专属链接模式，自动打标签 ──
-    if data.token:
-        link = db.query(RegistrationLink).filter(
-            RegistrationLink.token == data.token,
-            RegistrationLink.status == "pending",
-        ).first()
+    if not data.token:
+        return result
 
-        if link:
-            # 第一步（最高优先级）：保存数据到 member_profiles
-            _profile_saved = False
-            _emergency_backup = ""
-            try:
-                _save_member_profile(db, data, link, result)
-                _profile_saved = True
-            except Exception as _save_e:
-                result["save_warning"] = str(_save_e)
-                try:
-                    import uuid as _uuid, os as _os
-                    _backup_dir = "/data/yufeng-uploads/emergency_backup"
-                    _os.makedirs(_backup_dir, exist_ok=True)
-                    _backup_file = _os.path.join(_backup_dir, "form_" + link.token + "_" + _uuid.uuid4().hex[:8] + ".json")
-                    with open(_backup_file, "w", encoding="utf-8") as _bf:
-                        _backup_data = {
-                            "token": link.token,
-                            "customer_name": link.customer_name,
-                            "employee_userid": link.employee_userid,
-                            "form_data": {
-                                "nickname": data.nickname,
-                                "city": data.city,
-                                "wechat": data.wechat,
-                                "phone": data.phone,
-                                "hometown": data.hometown,
-                                "birth_info": data.birth_info,
-                                "income": data.income,
-                                "job": data.job,
-                                "education": data.education,
-                                "hw": data.hw,
-                                "body_type": data.body_type,
-                                "ideal_body_type": data.ideal_body_type,
-                                "role_self": data.role_self,
-                                "ideal_role": data.ideal_role,
-                                "single_duration": data.single_duration,
-                                "out_status": data.out_status,
-                                "marriage": data.marriage,
-                                "attitude_live": data.attitude_live,
-                                "experience": data.experience,
-                                "self_tags": data.self_tags,
-                                "ideal_type_tags": data.ideal_type_tags,
-                                "dealbreaker": data.dealbreaker,
-                                "long_distance": data.long_distance,
-                                "social_info": data.social_info,
-                                "ideal_desc": data.ideal_desc,
-                                "love_habits": data.love_habits,
-                                "why_together": data.why_together,
-                                "extra_message": data.extra_message,
-                                "has_photo": bool(data.photo_base64),
-                            },
-                            "submitted_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                        json.dump(_backup_data, _bf, ensure_ascii=False, indent=2)
-                    _emergency_backup = _backup_file
-                except Exception as _backup_e:
-                    result["save_warning"] += " | 紧急备份也失败: " + str(_backup_e)
+    link = db.query(RegistrationLink).filter(
+        RegistrationLink.token == data.token,
+        RegistrationLink.status == "pending",
+    ).first()
+    if not link:
+        return result
 
-            link.status = "used"
-            link.used_at = datetime.now(timezone.utc)
-            link.submit_result = json.dumps({
-                "nickname": data.nickname,
-                "city": data.city,
-                "age": data.age,
-                "role_self": data.role_self,
-                "tags_applied": [],
-                "auto_tagged": False,
-            }, ensure_ascii=False)
-            db.commit()
+    # ════════════════════════════════════════════════════
+    # 第 1 步（最高优先级）：保存数据到 member_profiles
+    # ════════════════════════════════════════════════════
+    emergency_backup = ""
+    try:
+        _save_member_profile(db, data, link, result)
+    except Exception as save_err:
+        result["save_warning"] = str(save_err)
+        # 紧急备份：把完整表单数据写到磁盘，至少不丢
+        try:
+            import uuid as _uid, os as _os
+            bdir = "/data/yufeng-uploads/emergency_backup"
+            _os.makedirs(bdir, exist_ok=True)
+            bfile = _os.path.join(bdir, f"form_{link.token}_{_uid.uuid4().hex[:8]}.json")
+            with open(bfile, "w", encoding="utf-8") as f:
+                json.dump({
+                    "token": link.token,
+                    "customer_name": link.customer_name,
+                    "employee_userid": link.employee_userid,
+                    "form_data": data.model_dump(),
+                    "submitted_at": datetime.now(timezone.utc).isoformat(),
+                }, f, ensure_ascii=False, indent=2)
+            emergency_backup = bfile
+        except Exception as backup_err:
+            result["save_warning"] += f" | emergency backup also failed: {backup_err}"
 
-            # 第二步：打标签 + 自动备注 (WeCom API，可失败)
-            try:
-                ext_userid = link.external_userid
-                if not ext_userid:
-                    ext_userid = await find_external_userid(
-                        link.employee_userid, link.customer_name
-                    )
-                    if ext_userid:
-                        link.external_userid = ext_userid
-                        db.commit()
-                if ext_userid:
-                    form_dict = {
-                        "city": data.city,
-                        "age": data.birth_info,
-                        "role_self": data.role_self,
-                        "income": data.income,
-                        "nickname": data.nickname,
-                        "job": data.job,
-                        "attitude_live": data.attitude_live or "",
-                        "lifestyle_status": (data.attitude_live + " " + data.social_info + " " + data.self_tags + " " + data.ideal_desc + " " + data.love_habits + " " + data.why_together + " " + data.extra_message).strip(),
-                        "hobbies": "",
-                        "current_situation": "",
-                        "expectation": data.ideal_desc or data.dealbreaker or "",
-                        "long_distance": data.long_distance,
-                        "body_type": data.body_type,
-                    }
-                    tag_names = suggest_tags_from_form(form_dict)
-                    await ensure_tag_group()
-                    tag_ids = []
-                    for name in tag_names:
-                        tag_id = await ensure_tag(name)
-                        tag_ids.append(tag_id)
-                    await mark_tag(ext_userid, tag_ids, employee_userid=link.employee_userid)
+    # ════════════════════════════════════════════════════
+    # 第 2 步：标记链接已使用 + 写入 submit_result + commit
+    # ════════════════════════════════════════════════════
+    link.status = "used"
+    link.used_at = datetime.now(timezone.utc)
+    link.submit_result = json.dumps({
+        "nickname": data.nickname,
+        "city": data.city,
+        "age": data.age,
+        "role_self": data.role_self,
+        "tags_applied": result.get("tags_applied", []),
+        "auto_tagged": result.get("auto_tagged", False),
+    }, ensure_ascii=False)
+    db.commit()
 
-                    age_str = ""
-                    if data.age:
-                        age_str = str(data.age)
-                    elif data.birth_info:
-                        import re
-                        m = re.search(r"(\d{4})", data.birth_info)
-                        if m:
-                            age_str = str(datetime.now().year - int(m.group(1)))
+    if emergency_backup:
+        result["emergency_backup"] = emergency_backup
 
-                    level = evaluate_member_level(form_dict)
-
-                    try:
-                        from app.services.wecom import remark_external_contact, upload_wecom_image_media
-                        import io as _io, base64 as _b64
-                        from PIL import Image as _Image
-
-                        remark_text = "|".join([data.nickname or "", data.city or "", data.role_self or "", age_str, level])
-                        desc_parts = [
-                            "昵称: " + (data.nickname or ""),
-                            "城市: " + (data.city or ""),
-                            "年龄: " + (data.birth_info or ""),
-                            "属性: " + (data.role_self or ""),
-                            "身高/体重: " + (data.hw or ""),
-                            "体型: " + (data.body_type or ""),
-                            "职业: " + (data.job or ""),
-                            "学历: " + (data.education or ""),
-                            "收入: " + (data.income or ""),
-                            "微信: " + (data.wechat or ""),
-                            "手机: " + (data.phone or ""),
-                            "出柜: " + (data.out_status or ""),
-                            "单身: " + (data.single_duration or ""),
-                            "自我标签: " + (data.self_tags or ""),
-                            "理想型: " + (data.ideal_type_tags or ""),
-                            "雷区: " + (data.dealbreaker or ""),
-                            "异地: " + (data.long_distance or ""),
-                            "恋爱观: " + (data.love_habits or "") + " " + (data.why_together or ""),
-                            "其他: " + (data.extra_message or ""),
-                        ]
-                        desc = " ".join(desc_parts)
-                        remark_pic_mediaid = ""
-                        if data.photo_base64:
-                            try:
-                                img_data = _b64.b64decode(data.photo_base64)
-                                img = _Image.open(_io.BytesIO(img_data))
-                                max_size = 800
-                                w, h = img.size
-                                if w > max_size or h > max_size:
-                                    ratio = max_size / max(w, h)
-                                    img = img.resize((int(w * ratio), int(h * ratio)), _Image.LANCZOS)
-                                compressed = _io.BytesIO()
-                                if img.mode in ("RGBA", "P"):
-                                    img = img.convert("RGB")
-                                img.save(compressed, format="JPEG", quality=70, optimize=True)
-                                import tempfile as _tf, os as _os
-                                tmp_path = _os.path.join(_tf.gettempdir(), "member_photo_" + link.token + ".jpg")
-                                with open(tmp_path, "wb") as _f:
-                                    _f.write(compressed.getvalue())
-                                remark_pic_mediaid = await upload_wecom_image_media(tmp_path)
-                                try: _os.remove(tmp_path)
-                                except: pass
-                                desc += " [已传照片]"
-                            except Exception:
-                                desc += " [照片上传失败]"
-                        await remark_external_contact(
-                            employee_userid=link.employee_userid,
-                            external_userid=ext_userid,
-                            remark=remark_text[:30],
-                            description=desc[:500],
-                            remark_pic_mediaid=remark_pic_mediaid,
-                        )
-                    except Exception as _rem_e:
-                        result["remark_warning"] = str(_rem_e)
-
-                    result["auto_tagged"] = True
-                    result["external_userid"] = ext_userid
-                    result["tags_applied"] = tag_names
-                else:
-                    result["tag_warning"] = "客户不在最近客户列表中，需手动补打标签"
-            except Exception as e:
-                result["tag_error"] = str(e)
-
-            try:
-                link.submit_result = json.dumps({
-                    "nickname": data.nickname,
-                    "city": data.city,
-                    "age": data.age,
-                    "role_self": data.role_self,
-                    "tags_applied": result.get("tags_applied", []),
-                    "auto_tagged": result.get("auto_tagged", False),
-                }, ensure_ascii=False)
+    # ════════════════════════════════════════════════════
+    # 第 3 步：打标签 + 自动备注企微（可失败）
+    # ════════════════════════════════════════════════════
+    try:
+        ext_userid = link.external_userid or await find_external_userid(
+            link.employee_userid, link.customer_name
+        )
+        if ext_userid:
+            if not link.external_userid:
+                link.external_userid = ext_userid
                 db.commit()
-            except Exception:
-                pass
 
-            if _emergency_backup:
-                result["emergency_backup"] = _emergency_backup            # 无论打标签成功与否，链接标记为已使用
-            link.status = "used"
-            link.used_at = datetime.now(timezone.utc)
-            link.submit_result = json.dumps({
-                "nickname": data.nickname,
+            # 构建标签推荐
+            tag_input = {
                 "city": data.city,
                 "age": data.age,
                 "role_self": data.role_self,
-                "tags_applied": result.get("tags_applied", []),
-                "auto_tagged": result["auto_tagged"],
-            }, ensure_ascii=False)
+                "body_type": data.body_type,
+                "lifestyle_status": data.lifestyle_status,
+                "hobbies": data.hobbies,
+                "current_situation": data.current_situation,
+                "expectation": data.expectation,
+                "long_distance": data.long_distance,
+                "nickname": data.nickname,
+                "income": data.income,
+                "job": data.job,
+            }
+            tag_names = suggest_tags_from_form(tag_input)
 
-            # 保存到会员档案表（同 external_userid 则更新）
+            await ensure_tag_group()
+            tag_ids = []
+            for name in tag_names:
+                tag_id = await ensure_tag(name)
+                tag_ids.append(tag_id)
+            await mark_tag(ext_userid, tag_ids, employee_userid=link.employee_userid)
+
+            # 自动备注企微客户资料
             try:
-                _save_member_profile(db, data, link, result)
-            except Exception:
-                pass  # 存档案失败不阻断主流程
+                from app.services.wecom import remark_external_contact
+                remark_text = "|".join(filter(None, [
+                    data.nickname, data.city or "", data.role_self or "", data.age or "", ""
+                ]))
+                desc = " ".join(filter(None, [
+                    f"昵称: {data.nickname}" if data.nickname else "",
+                    f"城市: {data.city}" if data.city else "",
+                    f"年龄: {data.age}" if data.age else "",
+                    f"属性: {data.role_self}" if data.role_self else "",
+                    f"身高: {data.height}" if data.height else "",
+                    f"体重: {data.weight}" if data.weight else "",
+                    f"体型: {data.body_type}" if data.body_type else "",
+                    f"职业: {data.job}" if data.job else "",
+                    f"收入: {data.income}" if data.income else "",
+                    f"日常: {data.lifestyle_status}" if data.lifestyle_status else "",
+                    f"爱好: {data.hobbies}" if data.hobbies else "",
+                    f"状况: {data.current_situation}" if data.current_situation else "",
+                    f"期待: {data.expectation}" if data.expectation else "",
+                    f"异地: {data.long_distance}" if data.long_distance else "",
+                ]))
+                await remark_external_contact(
+                    employee_userid=link.employee_userid,
+                    external_userid=ext_userid,
+                    remark=remark_text[:30],
+                    description=desc[:500],
+                    remark_pic_mediaid="",
+                )
+            except Exception as rem_err:
+                result["remark_warning"] = str(rem_err)
 
-            db.commit()
+            result["auto_tagged"] = True
+            result["external_userid"] = ext_userid
+            result["tags_applied"] = tag_names
+        else:
+            result["tag_warning"] = "客户不在最近客户列表中，需手动补打标签"
+    except Exception as tag_err:
+        result["tag_error"] = str(tag_err)
 
-            # ── 匹配 + 推送 ──
-            try:
-                # 查出刚保存的 profile
-                saved_profile = db.query(MemberProfile).filter(
-                    MemberProfile.token == link.token
-                ).first()
-                if saved_profile and saved_profile.nickname:
-                    matches = find_matches(db, saved_profile, limit=5)
-                    if matches and link.employee_userid:
-                        push_text = (
-                            f"🎯 新人登记：{saved_profile.nickname}\n"
-                            f"📋 城市·{saved_profile.city or '?'} "
-                            f"年龄·{saved_profile.age or '?'} "
-                            f"属性·{saved_profile.role_self or '?'}\n"
-                            f"━━━━━━━━━━━━━━━━\n"
-                        )
-                        for i, m in enumerate(matches, 1):
-                            push_text += f"\n{i}. {m['description']}\n"
-                            push_text += f"   💯 匹配度 {m['scores']['total']}%\n"
-                        push_text += (
-                            f"\n━━━━━━━━━━━━━━━━\n"
-                            f"💡 建议：把以上资料发给客户，让他选感兴趣的人"
-                        )
-                        await send_text_to_employee(link.employee_userid, push_text)
-                        result["matched_count"] = len(matches)
-            except Exception as e:
-                result["push_warning"] = str(e)
+    # 更新 submit_result（含最终标签信息）
+    link.submit_result = json.dumps({
+        "nickname": data.nickname,
+        "city": data.city,
+        "age": data.age,
+        "role_self": data.role_self,
+        "tags_applied": result.get("tags_applied", []),
+        "auto_tagged": result.get("auto_tagged", False),
+    }, ensure_ascii=False)
+    db.commit()
+
+    # ════════════════════════════════════════════════════
+    # 第 4 步：匹配 + 推送（可失败）
+    # ════════════════════════════════════════════════════
+    try:
+        saved_profile = db.query(MemberProfile).filter(
+            MemberProfile.token == link.token
+        ).first()
+        if saved_profile and saved_profile.nickname:
+            matches = find_matches(db, saved_profile, limit=5)
+            if matches and link.employee_userid:
+                push = (
+                    f"🎯 新人登记：{saved_profile.nickname}\n"
+                    f"💌 城市·{saved_profile.city or '?'} "
+                    f"年龄·{saved_profile.age or '?'}岁 "
+                    f"属性·{saved_profile.role_self or '?'} "
+                    f"体型·{saved_profile.body_type or '?'}\n"
+                    f"━━━━━━━━━━━━━━━━\n"
+                )
+                for i, m in enumerate(matches, 1):
+                    push += f"\n{i}. {m['description']}\n"
+                    score = round(95 - (i-1) * 15 / max(1, len(matches)-1), 1) if len(matches) > 1 else 95
+                    push += f"   💯 匹配度 {score}%\n"
+                push += f"\n━━━━━━━━━━━━━━━━\n💡 建议：把以上资料发给客户，让他选感兴趣的人"
+                await send_text_to_employee(link.employee_userid, push)
+                result["matched_count"] = len(matches)
+    except Exception as push_err:
+        result["push_warning"] = str(push_err)
 
     return result
+

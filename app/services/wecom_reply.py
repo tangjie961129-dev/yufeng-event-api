@@ -355,54 +355,72 @@ def _build_huxuan_info_reply(entity) -> str:
     return "\n".join(lines)
 
 
+
 def _build_member_info_reply(entity) -> str:
-    # HuxuanProfile 兼容 — 属性是中文名
+    # HuxuanProfile 相容
     if hasattr(entity, "昵称"):
         return _build_huxuan_info_reply(entity)
 
-    """根据 MemberProfile 或 User 对象构建会员档案回复（模板格式）"""
     lines = ["━━━ 📋 会员档案 ━━━", ""]
 
     nickname = _get_val(entity, "nickname")
     role_self = _get_val(entity, "role_self", "role")
     age = _get_val(entity, "age")
     city = _get_val(entity, "city")
-    education = _get_val(entity, "education")
     job = _get_val(entity, "job")
+    income = _get_val(entity, "income", "income_range")
     height = _get_val(entity, "height")
     weight = _get_val(entity, "weight")
-
-    # 年薪/收入
-    income = _get_val(entity, "income", "income_range")
-
-    # 个人情感情况 / 出柜情况
-    current_situation = _get_val(entity, "current_situation")
+    body_type = _get_val(entity, "body_type")
+    education = _get_val(entity, "education")
     lifestyle_status = _get_val(entity, "lifestyle_status")
-
-    # 择偶标准
+    hobbies = _get_val(entity, "hobbies")
+    current_situation = _get_val(entity, "current_situation")
     expectation = _get_val(entity, "expectation")
     match_preferences = _get_val(entity, "match_preferences")
+    long_distance = _get_val(entity, "long_distance")
+    tags_raw = _get_val(entity, "tags_applied")
 
-    # 家乡（没有对应字段）
-    hometown = ""
-
-    # 层级
     level = _get_val(entity, "level")
     level_str = f" [{level}级]" if level in ("S", "A", "B", "C") else ""
-    
+
     lines.append(f"昵称：{nickname}{level_str}")
-    lines.append(f"属性：{role_self}")
-    lines.append(f"年龄：{age}")
-    lines.append(f"家乡：{hometown}")
-    lines.append(f"现居城市：{city}")
-    lines.append(f"学历：{education}")
-    lines.append(f"职业：{job}")
-    lines.append(f"年薪：{income}")
-    lines.append(f"身高：{height}")
-    lines.append(f"体重：{weight}")
-    lines.append(f"个人情感情况：{current_situation}")
-    lines.append(f"出柜情况：{lifestyle_status}")
-    lines.append(f"择偶标准：{expectation or match_preferences}")
+    if role_self:
+        lines.append(f"属性：{role_self}")
+    if age:
+        lines.append(f"年龄：{age}岁")
+    if city:
+        lines.append(f"城市：{city}")
+    if job:
+        lines.append(f"职业：{job}")
+    if income:
+        lines.append(f"收入：{income}")
+    if height or weight:
+        parts = []
+        if height: parts.append(str(height) + "cm")
+        if weight: parts.append(str(weight) + "kg")
+        lines.append(f"身高/体重：{'/'.join(parts)}")
+    if body_type:
+        lines.append(f"体型：{body_type}")
+    if lifestyle_status:
+        lines.append(f"日常状态：{lifestyle_status}")
+    if hobbies:
+        lines.append(f"爱好习惯：{hobbies}")
+    if current_situation:
+        lines.append(f"目前状况：{current_situation}")
+    if expectation or match_preferences:
+        lines.append(f"期待的你：{expectation or match_preferences}")
+    if long_distance:
+        lines.append(f"异地：{long_distance}")
+    if tags_raw and tags_raw not in ("[]", "{}"):
+        import json as _j
+        try:
+            tags = _j.loads(tags_raw)
+            if tags:
+                lines.append("🏷️ 标签：" + " ".join(tags))
+        except: pass
+
     lines.append("")
     lines.append("💡 下一步：说「推荐匹配」获取匹配建议")
     return "\n".join(lines)
+
