@@ -700,21 +700,50 @@ async function sendForm(d){
 </html>"""""
 
 class RegisterFormData(BaseModel):
+    # 必填基础
     nickname: str = ""
     city: str = ""
-    age: str = ""
+    wechat: str = ""
+    phone: str = ""
+    hometown: str = ""
+    birth_info: str = ""
+    income: str = ""
+    job: str = ""
+    education: str = ""
+    # 外貌
+    hw: str = ""
     height: str = ""
     weight: str = ""
+    body_type: str = ""
+    ideal_body_type: str = ""
+    # 角色
     role_self: str = ""
-    job: str = ""
-    income: str = ""
-    lifestyle_status: str = ""
+    ideal_role: str = ""
+    # 感情现状
+    single_duration: str = ""
+    out_status: str = ""
+    marriage: str = ""
+    attitude_live: str = ""
+    experience: str = ""
+    # 性格
+    self_tags: str = ""
+    ideal_type_tags: str = ""
     hobbies: str = ""
+    dealbreaker: str = ""
+    long_distance: str = ""
+    social_info: str = ""
+    # 期待
+    why_together: str = ""
+    extra_message: str = ""
+    # 系统
+    source: str = ""
+    token: str = ""
+    photo_base64: str = ""
+    # 兼容旧版本
+    age: str = ""
+    lifestyle_status: str = ""
     current_situation: str = ""
-    expectation: str = ""
-    long_distance: str = ""  # 是否接受短暂异地
-    body_type: str = ""  # 你认为自己的体型是
-    token: str = ""  # 专属链接 token
+    expectation: str = "" 
 
 
 
@@ -759,7 +788,8 @@ def _parse_int(val: str) -> int | None:
 
 
 def _save_member_profile(db: Session, data: RegisterFormData, link: RegistrationLink, result: dict) -> None:
-    """保存或更新会员档案"""
+    """保存完整表单数据到会员档案表"""
+    import uuid as _uuid, os as _os, base64 as _b64
     ext_userid = result.get("external_userid") or ""
 
     profile = None
@@ -767,28 +797,97 @@ def _save_member_profile(db: Session, data: RegisterFormData, link: Registration
         profile = db.query(MemberProfile).filter(
             MemberProfile.external_userid == ext_userid
         ).first()
-
     if not profile:
         profile = MemberProfile()
 
+    # 系统字段
     profile.external_userid = ext_userid if ext_userid else None
     profile.employee_userid = link.employee_userid
     profile.token = link.token
+    profile.source = getattr(data, "source", "")
+    profile.tags_applied = json.dumps(result.get("tags_applied", []), ensure_ascii=False)
+
+    # 基础信息
     profile.nickname = data.nickname
     profile.city = data.city
-    profile.age = _parse_age(data.age)
-    profile.height = _parse_int(data.height)
-    profile.weight = _parse_int(data.weight)
-    profile.role_self = data.role_self
-    profile.body_type = data.body_type
-    profile.job = data.job
+    profile.wechat = data.wechat
+    profile.phone = data.phone
+    profile.hometown = data.hometown
+    profile.birth_info = data.birth_info
     profile.income = data.income
-    profile.lifestyle_status = data.lifestyle_status
+    profile.job = data.job
+    profile.education = data.education
+
+    # 年龄解析（优先 birth_info，兼容 age 字段）
+    age_val = None
+    for src in [data.birth_info, data.age]:
+        if src and src.strip():
+            try:
+                age_val = int(src.strip())
+                break
+            except ValueError:
+                try:
+                    import re
+                    m = re.search(r"(\d{2})", src.strip())
+                    if m:
+                        age_val = int(m.group(1))
+                        break
+                except: pass
+    profile.age = age_val
+
+    # 身高/体重（优先 hw 字段，兼容 height/weight 单独字段）
+    height_val = _parse_int(data.height)
+    weight_val = _parse_int(data.weight)
+    if not height_val and data.hw and "/" in data.hw:
+        parts = data.hw.split("/")
+        if len(parts) >= 2:
+            height_val = _parse_int(parts[0]) or height_val
+            weight_val = _parse_int(parts[1]) or weight_val
+    profile.height = height_val
+    profile.weight = weight_val
+
+    # 外貌
+    profile.body_type = data.body_type
+    profile.ideal_body_type = data.ideal_body_type
+    profile.role_self = data.role_self
+    profile.ideal_role = data.ideal_role
+
+    # 感情现状
+    profile.single_duration = data.single_duration
+    profile.out_status = data.out_status
+    profile.marriage = data.marriage
+    profile.attitude_live = data.attitude_live
+    profile.experience = data.experience
+
+    # 性格/爱好
+    profile.self_tags = data.self_tags
+    profile.ideal_type_tags = data.ideal_type_tags
     profile.hobbies = data.hobbies
-    profile.current_situation = data.current_situation
-    profile.expectation = data.expectation
+    profile.dealbreaker = data.dealbreaker
     profile.long_distance = data.long_distance
-    profile.tags_applied = json.dumps(result.get("tags_applied", []), ensure_ascii=False)
+    profile.social_info = data.social_info
+
+    # 期待
+    profile.why_together = data.why_together
+    profile.extra_message = data.extra_message
+
+    # 兼容旧字段
+    profile.lifestyle_status = data.lifestyle_status or ""
+    profile.current_situation = data.current_situation or ""
+    profile.expectation = data.expectation or ""
+
+    # 保存照片
+    if data.photo_base64:
+        _PHOTO_DIR = "/data/yufeng-uploads/member_photos"
+        _os.makedirs(_PHOTO_DIR, exist_ok=True)
+        _filename = f"member_{link.token}_{_uuid.uuid4().hex[:12]}.jpg"
+        _filepath = _os.path.join(_PHOTO_DIR, _filename)
+        try:
+            with open(_filepath, "wb") as _f:
+                _f.write(_b64.b64decode(data.photo_base64))
+            profile.photo_path = f"/static/member_photos/{_filename}"
+        except Exception:
+            profile.photo_path = "[照片上传失败]"
 
     db.add(profile)
 
@@ -827,30 +926,56 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
         return result
 
     # ════════════════════════════════════════════════════
-    # 第 1 步（最高优先级）：保存数据到 member_profiles
+    # 第 0 步（绝对优先）：熔断写磁盘备份——进 DB 前先保完整数据
     # ════════════════════════════════════════════════════
-    emergency_backup = ""
+    import uuid as _uid, os as _os
+    _backup_dir = "/data/yufeng-uploads/emergency_backup"
+    _os.makedirs(_backup_dir, exist_ok=True)
+    _backup_file = _os.path.join(_backup_dir, f"form_{link.token}_{_uid.uuid4().hex[:8]}.json")
+    try:
+        with open(_backup_file, "w", encoding="utf-8") as _bf:
+            json.dump({
+                "token": link.token,
+                "customer_name": link.customer_name,
+                "employee_userid": link.employee_userid,
+                "form_data": data.model_dump(),
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "disposition": "pending",  # pending | saved | failed
+            }, _bf, ensure_ascii=False, indent=2)
+        result["raw_backup"] = _backup_file
+    except Exception as _bf_err:
+        # 备份写磁盘失败不阻断主流程
+        result["raw_backup_warning"] = str(_bf_err)
+        _backup_file = ""
+
+    # ════════════════════════════════════════════════════
+    # 第 1 步：保存数据到 member_profiles
+    # ════════════════════════════════════════════════════
     try:
         _save_member_profile(db, data, link, result)
+        # DB 保存成功→更新备份文件为 saved 状态
+        if _backup_file:
+            try:
+                with open(_backup_file, "r") as _bfr:
+                    _bd = json.load(_bfr)
+                _bd["disposition"] = "saved"
+                with open(_backup_file, "w") as _bfw:
+                    json.dump(_bd, _bfw, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
     except Exception as save_err:
         result["save_warning"] = str(save_err)
-        # 紧急备份：把完整表单数据写到磁盘，至少不丢
-        try:
-            import uuid as _uid, os as _os
-            bdir = "/data/yufeng-uploads/emergency_backup"
-            _os.makedirs(bdir, exist_ok=True)
-            bfile = _os.path.join(bdir, f"form_{link.token}_{_uid.uuid4().hex[:8]}.json")
-            with open(bfile, "w", encoding="utf-8") as f:
-                json.dump({
-                    "token": link.token,
-                    "customer_name": link.customer_name,
-                    "employee_userid": link.employee_userid,
-                    "form_data": data.model_dump(),
-                    "submitted_at": datetime.now(timezone.utc).isoformat(),
-                }, f, ensure_ascii=False, indent=2)
-            emergency_backup = bfile
-        except Exception as backup_err:
-            result["save_warning"] += f" | emergency backup also failed: {backup_err}"
+        # 已经有熔断备份了，标记为 failed
+        if _backup_file:
+            try:
+                with open(_backup_file, "r") as _bfr:
+                    _bd = json.load(_bfr)
+                _bd["disposition"] = "failed"
+                _bd["error"] = str(save_err)
+                with open(_backup_file, "w") as _bfw:
+                    json.dump(_bd, _bfw, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
     # ════════════════════════════════════════════════════
     # 第 2 步：标记链接已使用 + 写入 submit_result + commit
@@ -867,8 +992,8 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
     }, ensure_ascii=False)
     db.commit()
 
-    if emergency_backup:
-        result["emergency_backup"] = emergency_backup
+    if _backup_file:
+        result["raw_backup"] = _backup_file
 
     # ════════════════════════════════════════════════════
     # 第 3 步：打标签 + 自动备注企微（可失败）

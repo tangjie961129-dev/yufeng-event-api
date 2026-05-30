@@ -132,7 +132,7 @@ function render(json) {
 
     let html = '<div class="table-wrap"><table><thead><tr>' +
         '<th>ID</th><th>昵称</th><th>年龄</th><th>城市</th><th>属性</th>' +
-        '<th>学历</th><th>期望角色</th><th>职业</th><th>收入</th><th>身高</th><th>体重</th><th>理想对象</th><th>层级</th><th>注册时间</th></tr></thead><tbody>';
+        '<th>学历</th><th>期望角色</th><th>职业</th><th>收入</th><th>身高</th><th>体重</th><th>层级</th><th>注册时间</th></tr></thead><tbody>';
 
     for (const r of rows) {
         const levelClass = 'level-' + (r.level || '');
@@ -150,7 +150,7 @@ function render(json) {
             '<td>' + esc(r.income) + '</td>' +
             '<td>' + (r.height || '') + '</td>' +
             '<td>' + (r.weight || '') + '</td>' +
-            '<td>' + esc((r.ideal_desc||'').slice(0,30)) + '</td>' +
+
             '<td class="' + levelClass + '">' + levelStr + '</td>' +
             '<td>' + (r.created_at || '').slice(0,10) + '</td>' +
             '</tr>';
@@ -190,7 +190,7 @@ def admin_members_data(password: str = Query(...)):
         rows = db.execute(text("""
             SELECT id, nickname, city, age, role_self, income, job,
                    height, weight, body_type, education, birth_info,
-                   ideal_role, ideal_desc,
+                   ideal_role,
                    level, level_score, source, created_at, updated_at,
                    CASE WHEN photo_path != '' AND photo_path IS NOT NULL THEN 1 ELSE 0 END as has_photo
             FROM member_profiles

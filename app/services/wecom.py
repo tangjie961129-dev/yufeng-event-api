@@ -519,7 +519,7 @@ def evaluate_member_level(form_data: dict) -> str:
         "hobbies": form_data.get("hobbies", ""),
         "current_situation": form_data.get("current_situation", ""),
         "expectation": form_data.get("expectation", ""),
-        "ideal_desc": form_data.get("ideal_desc", form_data.get("expectation", "")),
+
         "dealbreaker": form_data.get("dealbreaker", ""),
         "marriage": form_data.get("marriage", ""),
         "photos": form_data.get("photos", ""),
@@ -676,3 +676,148 @@ async def add_moment_task(
         raise RuntimeError(f"创建企微客户朋友圈任务失败: {data}")
     data["request_payload"] = payload
     return data
+
+
+
+async def list_all_external_contacts(employee_userid: str) -> list[dict]:
+    '''get all external contacts for an employee'''
+    token = await _get_access_token()
+    all_contacts = []
+    cursor = ""
+
+    while True:
+        body = {"userid_list": [employee_userid], "limit": 100}
+        if cursor:
+            body["cursor"] = cursor
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{WECOM_API_BASE}/cgi-bin/externalcontact/batch/get_by_user",
+                params={"access_token": token},
+                json=body,
+                timeout=15,
+            )
+            data = resp.json()
+            if data.get("errcode") != 0:
+                raise RuntimeError(f"get contacts failed: {data}")
+
+        for item in data.get("external_contact_list", []):
+            contact = item.get("external_contact") or {}
+            follow_info = item.get("follow_info") or {}
+            ext_id = contact.get("external_userid")
+            if ext_id:
+                all_contacts.append({
+                    "external_userid": ext_id,
+                    "name": (contact.get("name") or "").strip(),
+                    "remark": (follow_info.get("remark") or "").strip(),
+                })
+
+        cursor = data.get("next_cursor", "")
+        if not cursor:
+            break
+
+    return all_contacts
+
+
+async def send_text_to_external(external_userid: str, content: str) -> bool:
+    '''send text to an external contact via WeCom API'''
+    request_id = uuid.uuid4().hex[:8]
+    token = await _get_access_token()
+    payload = {
+        "touser": [external_userid],
+        "msgtype": "text",
+        "text": {"content": content},
+    }
+    _log_wecom_event(
+        "external_message_send_request",
+        request_id=request_id,
+        touser=external_userid,
+        content_len=len(content or ""),
+        content_preview=(content or "")[:120],
+    )
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{WECOM_API_BASE}/cgi-bin/externalcontact/message/send",
+            params={"access_token": token},
+            json=payload,
+            timeout=10,
+        )
+        data = resp.json()
+        _log_wecom_event(
+            "external_message_send_response",
+            request_id=request_id,
+            http_status=resp.status_code,
+            errcode=data.get("errcode"),
+            errmsg=data.get("errmsg"),
+            touser=external_userid,
+            diagnosis=_explain_wecom_errcode(data.get("errcode"), data.get("errmsg", "")),
+        )
+        if data.get("errcode") != 0:
+            raise RuntimeError(f"send to external failed: {data}")
+        return True
+
+
+async def send_group_msg_template(external_userid: str, content: str) -> dict:
+    """通过企业群发助手创建群发任务（每人一条，需成员手动确认发送）"""
+    request_id = uuid.uuid4().hex[:8]
+    token = await _get_access_token()
+    payload = {
+        "chat_type": "single",
+        "external_userid": [external_userid],
+        "text": {"content": content},
+    }
+    _log_wecom_event(
+        "group_msg_template_request",
+        request_id=request_id,
+        touser=external_userid,
+        content_len=len(content or ""),
+        content_preview=(content or "")[:120],
+        payload_preview=str(payload)[:200],
+    )
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{WECOM_API_BASE}/cgi-bin/externalcontact/add_msg_template",
+            params={"access_token": token},
+            json=payload,
+            timeout=15,
+        )
+        data = resp.json()
+        _log_wecom_event(
+            "group_msg_template_response",
+            request_id=request_id,
+            http_status=resp.status_code,
+            errcode=data.get("errcode"),
+            errmsg=data.get("errmsg"),
+            touser=external_userid,
+            msgid=data.get("msgid", ""),
+            fail_list=data.get("fail_list", []),
+        )
+        return data
+
+async def revoke_msg_template(msgid: str) -> dict:
+    """撤回企业群发任务（停止群发）"""
+    request_id = uuid.uuid4().hex[:8]
+    token = await _get_access_token()
+    payload = {"msgid": msgid}
+    _log_wecom_event(
+        "group_msg_revoke_request",
+        request_id=request_id,
+        msgid=msgid,
+    )
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{WECOM_API_BASE}/cgi-bin/externalcontact/revoke_msg_template",
+            params={"access_token": token},
+            json=payload,
+            timeout=15,
+        )
+        data = resp.json()
+        _log_wecom_event(
+            "group_msg_revoke_response",
+            request_id=request_id,
+            http_status=resp.status_code,
+            errcode=data.get("errcode"),
+            errmsg=data.get("errmsg"),
+            msgid=msgid,
+        )
+        return data
