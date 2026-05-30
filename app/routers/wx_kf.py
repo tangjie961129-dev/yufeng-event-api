@@ -211,10 +211,12 @@ def _extract_query_name(text: str) -> str | None:
 
 
 
+
 def _query_by_city_role(db, content):
     """粗查询：按城市+属性筛选会员
-    说「查西安的1」「查广州的0」「深圳0.5」「北京的side」
-    同时查 users、member_profiles、huxuan_profiles
+    说「查西安的1」「查广州的0」
+    支持“西安1”“广州0”无空格写法
+    同时查 member_profiles + huxuan_profiles
     """
     import re
     m = re.search(r"(?:查|找)?\s*(.+?)\s*的\s*(0|1|0\.5|side|双|其他)\s*$", content)
@@ -226,10 +228,15 @@ def _query_by_city_role(db, content):
     role_search = m.group(2).strip()
     if not city_search or not role_search:
         return None
+
     from app.models.member_profile import MemberProfile
     from app.models.huxuan_profile import HuxuanProfile
+    from sqlalchemy import or_
+
     seen = set()
     combined = []
+
+    # 1. member_profiles
     for mp in db.query(MemberProfile).filter(
         MemberProfile.nickname.isnot(None), MemberProfile.nickname != "",
         MemberProfile.city.ilike(f"%{city_search}%"),
@@ -238,15 +245,24 @@ def _query_by_city_role(db, content):
         k = (mp.nickname or "").strip()
         if k and k not in seen:
             seen.add(k); combined.append(("mp", mp))
-    # 暂不包含 users（模型缺 role_self 字段）
+
+    # 2. huxuan_profiles - 属性值不同：纯1/偏1→1，纯0/偏0→0
+    _hx_map = {
+        "1": ["纯1", "偏1"],
+        "0": ["纯0", "偏0"],
+        "0.5": ["0.5", "0.5/皆可"],
+        "side": ["SIDE"],
+    }
+    hx_roles = _hx_map.get(role_search, [role_search])
     for h in db.query(HuxuanProfile).filter(
         HuxuanProfile.昵称.isnot(None), HuxuanProfile.昵称 != "",
         HuxuanProfile.城市.ilike(f"%{city_search}%"),
-        HuxuanProfile.属性 == role_search,
+        or_(*[HuxuanProfile.属性 == r for r in hx_roles]),
     ).limit(20).all():
         k = (h.昵称 or "").strip()
         if k and k not in seen:
             seen.add(k); combined.append(("hx", h))
+
     if not combined:
         return (
             "\u2501\u2501\u2501 \U0001f50d \u7c97\u67e5\u8be2 \u2501\u2501\u2501\n\n"
@@ -270,6 +286,7 @@ def _query_by_city_role(db, content):
     out.append("")
     out.append("\U0001f4a1 \u53ef\u8bf4\u300c\u67e5\u5176\u4ed6\u57ce\u5e02\u7684X\u300d\u7ee7\u7eed\u7b5b\u9009")
     return "\n".join(out)
+
 def _query_member_sync(db: Session, content: str) -> str | None:
     """同步查会员档案，直接返回格式化结果"""
     query_name = _extract_query_name(content)
