@@ -1,6 +1,6 @@
 """
 屿风会员分层评分 v3 — 简化版
-维度：收入(30%) + 城市(30%) + 年龄(20%) + 独居(20%)
+维度：收入(35%) + 城市(30%) + 年龄(15%) + 独居(20%)
 """
 import re
 
@@ -11,7 +11,6 @@ def parse_income(raw) -> int:
         return 20
     raw = str(raw).strip()
 
-    # 新表单下拉值
     TABLE = {
         "5万以上": 100,
         "3w-5w": 85,
@@ -21,7 +20,6 @@ def parse_income(raw) -> int:
         "3000-5000": 20,
         "3000以下": 5,
         "未工作/在读": 0,
-        # 旧值兼容
         "30000以上": 100,
         "20000以上": 80,
         "15000-20000": 75,
@@ -30,7 +28,6 @@ def parse_income(raw) -> int:
     if raw in TABLE:
         return TABLE[raw]
 
-    # 模糊匹配数字
     nums = re.findall(r'\d+', raw)
     if nums:
         val = int(nums[0])
@@ -43,6 +40,19 @@ def parse_income(raw) -> int:
     return 20
 
 
+# 二线及以上城市列表（一线100, 新一线+二线90）
+TIER1 = {"北京", "上海", "广州", "深圳"}
+TIER2 = {
+    "成都", "杭州", "重庆", "武汉", "西安", "苏州", "南京", "天津",
+    "长沙", "东莞", "宁波", "佛山", "合肥", "青岛",
+    "沈阳", "昆明", "大连", "厦门", "无锡", "福州", "济南",
+    "哈尔滨", "温州", "长春", "石家庄", "常州", "泉州", "南宁",
+    "贵阳", "南昌", "太原", "烟台", "嘉兴", "南通", "金华",
+    "珠海", "惠州", "徐州", "海口", "乌鲁木齐", "绍兴",
+    "中山", "台州", "兰州", "潍坊",
+}
+
+
 def city_score(city: str) -> int:
     """城市 → 0-100 分"""
     if not city:
@@ -51,59 +61,65 @@ def city_score(city: str) -> int:
 
     # 处理级联格式 "省/市/区"
     parts = re.split(r"[/·\s]", city)
-    # 取市名（例：江苏省/扬州市/邗江区 → 扬州）
     city_name = ""
+    # 1. 精选匹配：找第一个已知城市名
     for p in parts:
-        p = p.strip().replace("市", "")
-        if p and p not in ("北京", "上海", "天津", "重庆"):  # 直辖市直接保留
-            city_name = p
-        elif p in ("北京", "上海"):
-            city_name = p
+        p_clean = p.strip().replace("市", "")
+        if p_clean in TIER1 or p_clean in TIER2:
+            city_name = p_clean
+            break
+    # 2. 直辖市处理：北京/上海/天津/重庆 直接取
+    if not city_name:
+        for p in parts:
+            p_clean = p.strip().replace("市", "")
+            if p_clean in ("北京", "上海", "天津", "重庆"):
+                city_name = p_clean
+                break
+    # 3. 兜底：取第一个非省部分
+    if not city_name:
+        for p in parts:
+            p_clean = p.strip().replace("市", "").replace("省", "").replace("区", "").replace("县", "")
+            if p_clean and p_clean not in ("北京", "上海", "天津", "重庆"):
+                city_name = p_clean
+                break
     if not city_name:
         city_name = parts[0].replace("市", "").strip() if parts else city
 
-    SCORE_MAP = {
-        "北京": 100, "上海": 100, "广州": 100, "深圳": 100,
-        "杭州": 90, "成都": 90, "重庆": 80,
-        "南京": 80, "西安": 80, "武汉": 80, "长沙": 80,
-        "苏州": 70, "天津": 70, "东莞": 70, "佛山": 70,
-    }
-
-    if city_name in SCORE_MAP:
-        return SCORE_MAP[city_name]
-    # 模糊匹配
-    for key, score in SCORE_MAP.items():
-        if key in city_name or city_name in key:
-            return score
+    if city_name in TIER1:
+        return 100
+    # 模糊匹配二线
+    for t2 in TIER2:
+        if t2 in city_name or city_name in t2:
+            return 90
+    # 直辖市但非一线（天津、重庆）
+    if city_name in ("天津", "重庆"):
+        return 90
     return 30
 
 
 def age_score(age_val) -> int:
-    """年龄 → 0-100 分"""
+    """年龄 → 0-100 分（25-45满分）"""
     if age_val is None:
-        try:
-            age_val = int(age_val)
-        except:
-            return 30
-    age_val = int(age_val)
-    if 25 <= age_val <= 35:
+        return 30
+    try:
+        age_val = int(age_val)
+    except:
+        return 30
+    if 25 <= age_val <= 45:
         return 100
-    if 20 <= age_val <= 24 or 36 <= age_val <= 40:
+    if 18 <= age_val <= 24:
         return 70
-    if 18 <= age_val <= 19 or 41 <= age_val <= 45:
-        return 40
     if age_val >= 46:
-        return 10
+        return 30
     return 30
 
 
 def alone_score(attitude_live: str) -> int:
     """独居 → 0-100 分"""
     if not attitude_live:
-        return 50  # 未填→中性分，不惩罚
+        return 50
     al = attitude_live.strip()
 
-    # 新表单下拉值
     if al in ("租房独居", "已购房独居", "独居"):
         return 100
     if al in ("合租",):
@@ -111,15 +127,12 @@ def alone_score(attitude_live: str) -> int:
     if al in ("父母同居", "非独居", "与父母同住"):
         return 20
 
-    # 旧表单文本字段 — 模糊匹配
+    # 旧表单文本模糊匹配
     if "独居" in al or "自己住" in al or "一个人住" in al:
         return 100
     if "父母" in al or "家人" in al or "家庭" in al:
         return 20
     if "同居" in al or "合租" in al:
-        return 50
-    if "独居" not in al and "同居" not in al and "合租" not in al and "父母" not in al:
-        # 有填内容但无法判断居住情况 → 中性
         return 50
     return 50
 
@@ -135,17 +148,11 @@ def score_member(profile):
         except:
             pass
 
-    weights = {"income": 0.30, "city": 0.30, "age": 0.20, "alone": 0.20}
+    weights = {"income": 0.35, "city": 0.30, "age": 0.15, "alone": 0.20}
 
-    # 1. 收入
-    inc_raw = profile.get("income", "") or ""
-    inc = parse_income(inc_raw)
+    inc = parse_income(profile.get("income", "") or "")
+    cit = city_score(profile.get("city", "") or "")
 
-    # 2. 城市
-    c_raw = profile.get("city", "") or ""
-    cit = city_score(c_raw)
-
-    # 3. 年龄
     age_raw = profile.get("age")
     if age_raw is None:
         bi = profile.get("birth_info", "") or ""
@@ -153,9 +160,7 @@ def score_member(profile):
         age_raw = int(nums[0]) if nums else None
     ag = age_score(age_raw)
 
-    # 4. 独居
-    al_raw = profile.get("attitude_live", "") or ""
-    al = alone_score(al_raw)
+    al = alone_score(profile.get("attitude_live", "") or "")
 
     total = inc * weights["income"] + cit * weights["city"] + \
             ag * weights["age"] + al * weights["alone"]
@@ -171,10 +176,10 @@ def score_member(profile):
         level = "C"
 
     details = {
-        "income": {"raw": inc_raw, "score": inc, "weighted": round(inc * weights["income"], 1)},
-        "city": {"raw": c_raw, "score": cit, "weighted": round(cit * weights["city"], 1)},
-        "age": {"raw": age_raw, "score": ag, "weighted": round(ag * weights["age"], 1)},
-        "alone": {"raw": al_raw, "score": al, "weighted": round(al * weights["alone"], 1)},
+        "income": {"score": inc, "weighted": round(inc * weights["income"], 1)},
+        "city": {"score": cit, "weighted": round(cit * weights["city"], 1)},
+        "age": {"score": ag, "weighted": round(ag * weights["age"], 1)},
+        "alone": {"score": al, "weighted": round(al * weights["alone"], 1)},
     }
 
     return level, total, details
