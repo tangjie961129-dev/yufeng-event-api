@@ -114,6 +114,23 @@ def age_score(age_val) -> int:
     return 30
 
 
+def age_group(age_val) -> str:
+    """年龄组：18-24 / 25-35 / 35+"""
+    if age_val is None:
+        return ""
+    try:
+        age_val = int(age_val)
+    except (ValueError, TypeError):
+        return ""
+    if 18 <= age_val <= 24:
+        return "18-24"
+    if 25 <= age_val <= 35:
+        return "25-35"
+    if age_val >= 36:
+        return "35+"
+    return ""
+
+
 def alone_score(attitude_live: str) -> int:
     """独居 → 0-100 分"""
     if not attitude_live:

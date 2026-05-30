@@ -525,17 +525,25 @@ def evaluate_member_level(form_data: dict) -> str:
         "photos": form_data.get("photos", ""),
         "lifestyle_status": form_data.get("lifestyle_status", ""),
         "long_distance": form_data.get("long_distance", ""),
+        "attitude_live": form_data.get("attitude_live", ""),
     }
     level, _, _ = score_member(profile)
     return level
 
 
 def suggest_tags_from_form(form_data: dict) -> list[str]:
-    """根据表单数据生成标签：层级 + 城市"""
+    """根据表单数据生成标签：层级 + 城市 + 年龄组"""
+    from app.services.member_scorer import age_group
+
     tags = [f"层级·{evaluate_member_level(form_data)}"]
     city = (form_data.get("city") or "").strip()
     if city:
         tags.append(f"城市·{city}")
+    # 年龄组标签（用于群发筛选）
+    age_raw = form_data.get("age") or form_data.get("birth_info") or ""
+    grp = age_group(age_raw)
+    if grp:
+        tags.append(f"年龄组·{grp}")
     return tags
 
 

@@ -1032,6 +1032,7 @@ async def register_form_submit(data: RegisterFormData, db: Session = Depends(get
                         "income": data.income,
                         "nickname": data.nickname,
                         "job": data.job,
+                        "attitude_live": data.attitude_live or "",
                         "lifestyle_status": (data.attitude_live + " " + data.social_info + " " + data.self_tags + " " + data.ideal_desc + " " + data.love_habits + " " + data.why_together + " " + data.extra_message).strip(),
                         "hobbies": "",
                         "current_situation": "",
